@@ -40,27 +40,42 @@ function getKernel(): string {
 }
 
 function getCPU(): string {
+  const win = run("powershell.exe -NoProfile -Command \"(Get-CimInstance Win32_Processor).Name\" 2>/dev/null");
+  if (win && win !== "unknown") {
+    return win.replace(/\(R\)|\(TM\)/g, "").replace(/\s+/g, " ").trim();
+  }
   const raw = run("grep -m1 'model name' /proc/cpuinfo");
   const match = raw.match(/model name\s*:\s*(.+)/);
-  if (match) {
-    return match[1]
-      .replace(/\(R\)|\(TM\)/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
+  if (match) return match[1].replace(/\(R\)|\(TM\)/g, "").replace(/\s+/g, " ").trim();
   return os.cpus()[0]?.model ?? "unknown";
 }
 
+function getGPU(): string {
+  const win = run("powershell.exe -NoProfile -Command \"(Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notlike '*Basic*' } | Select-Object -First 1).Name\" 2>/dev/null");
+  if (win && win !== "unknown") return win.trim();
+  return run("lspci 2>/dev/null | grep -i 'vga\\|3d\\|display' | head -1 | sed 's/.*: //'") || "unknown";
+}
+
 function getRAM(): string {
-  try {
-    const total = os.totalmem();
-    const free = os.freemem();
-    const used = total - free;
-    const toMB = (b: number) => Math.round(b / 1024 / 1024);
-    return `${toMB(used)} MB / ${toMB(total)} MB`;
-  } catch {
-    return "unknown";
+  const win = run("powershell.exe -NoProfile -Command \"[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB, 1)\" 2>/dev/null");
+  if (win && win !== "unknown" && !isNaN(Number(win))) {
+    const total = Number(win);
+    const used = Math.round((os.totalmem() - os.freemem()) / 1024 / 1024 / 1024 * 10) / 10;
+    return `${used} GB used / ${total} GB total`;
   }
+  const total = os.totalmem();
+  const free = os.freemem();
+  const toGB = (b: number) => (b / 1024 / 1024 / 1024).toFixed(1);
+  return `${toGB(total - free)} GB / ${toGB(total)} GB`;
+}
+
+function getDisk(): string {
+  const win = run("powershell.exe -NoProfile -Command \"$d = Get-PSDrive C; [math]::Round($d.Used/1GB,1).ToString() + ' GB used / ' + [math]::Round(($d.Used+$d.Free)/1GB,1).ToString() + ' GB total'\" 2>/dev/null");
+  if (win && win !== "unknown" && win.includes("GB")) return win.trim();
+  const raw = run("df -h / | tail -1");
+  const parts = raw.split(/\s+/);
+  if (parts.length >= 5) return `${parts[2]} used / ${parts[1]} total (${parts[4]})`;
+  return "unknown";
 }
 
 function getUptime(): string {
@@ -78,15 +93,6 @@ function getIP(): string {
     for (const iface of ifaces[name] ?? []) {
       if (iface.family === "IPv4") return iface.address;
     }
-  }
-  return "unknown";
-}
-
-function getDisk(): string {
-  const raw = run("df -h / | tail -1");
-  const parts = raw.split(/\s+/);
-  if (parts.length >= 5) {
-    return `${parts[2]} used / ${parts[1]} total (${parts[4]})`;
   }
   return "unknown";
 }
@@ -114,6 +120,10 @@ const FSH_LOGO = [
   "                           ",
   "                           ",
   "                           ",
+  "                           ",
+  "                           ",
+  "                           ",
+  "                           ",
 ];
 
 function colorRow(): string {
@@ -133,45 +143,43 @@ export function printNeofetch() {
   const user = process.env.USER ?? os.userInfo().username;
   const host = os.hostname();
 
-  const logo = FSH_LOGO.map((l, i) =>
-    (i >= 2 && i <= 7) ? chalk.cyan(l) : chalk.dim(l)
-  );
-
   const c = (s: string) => chalk.cyan.bold(s);
   const g = (s: string) => chalk.gray(s);
   const w = (s: string) => chalk.white(s);
   const label = (s: string) => chalk.cyan(s.padEnd(7));
-  const sep = chalk.dim("─".repeat(38));
+  const sep = chalk.dim("─".repeat(40));
 
   const info: string[] = [
-
     `  ${c(user)}${g("@")}${c(host)}`,
     `  ${sep}`,
-
     `  ${label("OS")} ${w(getOS())}`,
     `  ${label("Kernel")} ${w(getKernel())}`,
     `  ${sep}`,
-
     `  ${label("CPU")} ${w(getCPU())}`,
-    `  ${label("RAM")} ${w(getRAM())}`,
-    `  ${label("Disk")} ${w(getDisk())}`,
     `  ${sep}`,
-
     `  ${label("Shell")} ${w(getShellVersion())}`,
-    `  ${label("Uptime")} ${w(getUptime())}`,
     `  ${label("IP")} ${w(getIP())}`,
-
     `  ${sep}`,
-    `  ${colorRow()}`,
     `  ${g("by Farell Kurniawan · github.com/FKfarell17108")}`,
   ];
 
-  const height = Math.max(logo.length, info.length);
-  while (logo.length < height) logo.push(" ".repeat(27));
-  while (info.length < height) info.push("");
+  const logoLines = FSH_LOGO.map((l, i) =>
+    (i >= 2 && i <= 7) ? chalk.cyan(l) : chalk.dim(l)
+  );
+
+  const padTop = Math.max(0, Math.floor((info.length - (FSH_LOGO.length - 9)) / 2));
+  const logo: string[] = [];
+  for (let i = 0; i < info.length; i++) {
+    const logoIdx = i - padTop + 2; 
+    if (logoIdx >= 0 && logoIdx < logoLines.length) {
+      logo.push(logoLines[logoIdx]);
+    } else {
+      logo.push(" ".repeat(27));
+    }
+  }
 
   console.log();
-  for (let i = 0; i < height; i++) {
+  for (let i = 0; i < info.length; i++) {
     console.log(`${logo[i]}  ${info[i]}`);
   }
   console.log();
