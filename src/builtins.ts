@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { interactiveLs } from "./interactiveLs";
+import { interactiveLs, pendingOpen, clearPendingOpen } from "./interactiveLs";
 import { pauseInput, resumeInput } from "./main";
 import { setAlias, removeAlias, getAllAliases } from "./aliases";
 
@@ -38,7 +38,20 @@ export function handleBuiltin(
     case "ls":
       pauseInput();
       interactiveLs(() => {
-        resumeInput();
+        const open = pendingOpen;
+        clearPendingOpen();
+
+        if (open) {
+          const { execute } = require("./executor");
+          const { parseInput } = require("./parser");
+          resumeInput();
+          setTimeout(() => {
+            const stmt = parseInput(`${open.editor} "${open.file}"`);
+            execute(stmt, () => {});
+          }, 60);
+        } else {
+          resumeInput();
+        }
       });
       return true;
 
