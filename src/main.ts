@@ -12,6 +12,10 @@ import {
   entriesToStrings, pushEntry, HistoryEntry,
 } from "./historyManager";
 import { highlight } from "./highlight";
+import { loadFshrc } from "./fshrc";
+
+// Load config first thing
+loadFshrc();
 
 // ─── State ────────────────────────────────────────────────────────────────────
 

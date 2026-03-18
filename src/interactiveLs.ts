@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { execFileSync } from "child_process";
+import { moveToTrash } from "./trash";
 
-// Editors to check, in priority order
 const EDITOR_CANDIDATES = [
   "nvim", "vim", "vi", "nano", "emacs", "micro", "hx", "helix", "code", "gedit",
 ];
@@ -19,22 +19,18 @@ function getInstalledEditors(): string[] {
   return installed;
 }
 
-// Set when user picks a file+editor from ls — builtins reads this after onExit
 export let pendingOpen: { editor: string; file: string } | null = null;
 export function clearPendingOpen() { pendingOpen = null; }
 
 export function interactiveLs(onExit: () => void) {
   const cwd = process.cwd();
-
   let entries: { name: string; isDir: boolean }[] = [];
 
   try {
     entries = fs.readdirSync(cwd).map((name) => {
       const full = path.join(cwd, name);
       let isDir = false;
-      try {
-        isDir = fs.statSync(full).isDirectory();
-      } catch {}
+      try { isDir = fs.statSync(full).isDirectory(); } catch {}
       return { name, isDir };
     });
   } catch {
@@ -42,10 +38,7 @@ export function interactiveLs(onExit: () => void) {
     return onExit();
   }
 
-  entries.sort(
-    (a, b) =>
-      Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name)
-  );
+  entries.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
 
   if (!process.stdin.isTTY) {
     console.log(entries.map((e) => e.name).join("  "));
@@ -59,50 +52,35 @@ export function interactiveLs(onExit: () => void) {
 
   let selectedIndex = 0;
   const stdin = process.stdin;
-
-  // Fixed layout — computed once, stable across renders
   const maxNameLen = Math.max(...entries.map((e) => e.name.length));
-  const COL_PAD = 2;
-  const COL_WIDTH = maxNameLen + COL_PAD;
+  const COL_WIDTH = maxNameLen + 2;
 
   function getPerRow() {
-    const cols = process.stdout.columns || 80;
-    return Math.max(1, Math.floor(cols / COL_WIDTH));
+    return Math.max(1, Math.floor((process.stdout.columns || 80) / COL_WIDTH));
   }
 
-  // Total rendered lines (hint + blank + grid rows)
   let lastRenderedLines = 0;
 
   function render() {
     const perRow = getPerRow();
     const totalRows = Math.ceil(entries.length / perRow);
-
-    // Build entire frame as one string to avoid flicker
     let frame = "";
 
-    // Move cursor up to start of previous render and overwrite
-    if (lastRenderedLines > 0) {
-      frame += `\x1b[${lastRenderedLines}A\r`;
-    }
+    if (lastRenderedLines > 0) frame += `\x1b[${lastRenderedLines}A\r`;
 
-    // Hint bar
     const key = (k: string) => chalk.bgGray.white.bold(` ${k} `);
     const g = chalk.gray;
-    const hintLine =
-      " " +
-      key("↑↓←→") + g(" move  ") +
-      key("enter") + g(" cd  ") +
-      key("q") + g("/") + key("esc") + g(" quit");
+    frame += " " + key("↑↓←→") + g(" move  ") +
+             key("enter") + g(" open  ") +
+             key("d") + g(" delete  ") +
+             key("esc") + g(" quit") +
+             "\x1b[K\n\x1b[K\n";
 
-    frame += hintLine + "\x1b[K\n\x1b[K\n";
-
-    // Grid rows — each cell is exactly COL_WIDTH chars wide
     for (let row = 0; row < totalRows; row++) {
-      let line = " "; // left margin
+      let line = " ";
       for (let col = 0; col < perRow; col++) {
         const i = row * perRow + col;
         if (i >= entries.length) break;
-
         const { name, isDir } = entries[i];
         const isSelected = i === selectedIndex;
         const isHidden = name.startsWith(".");
@@ -116,24 +94,18 @@ export function interactiveLs(onExit: () => void) {
         } else {
           cell = isHidden ? chalk.gray(padded) : chalk.white(padded);
         }
-
         line += cell;
       }
       frame += line + "\x1b[K\n";
     }
 
-    lastRenderedLines = 2 + totalRows; // hint + blank + grid
-
-    // Single write — no intermediate blank state = no flicker
+    lastRenderedLines = 2 + totalRows;
     process.stdout.write(frame);
   }
 
   function cleanup() {
-    if (stdin.isTTY) {
-      stdin.setRawMode(false);
-    }
+    if (stdin.isTTY) stdin.setRawMode(false);
     stdin.removeAllListeners("data");
-    stdin.removeAllListeners("keypress");
     process.stdout.write("\x1b[?25h");
   }
 
@@ -145,10 +117,129 @@ export function interactiveLs(onExit: () => void) {
     setTimeout(onExit, 50);
   }
 
+  // ─── Preview + Delete confirm ──────────────────────────────────────────────
+
+  function showDeleteConfirm(entryName: string, isDir: boolean) {
+    const full = path.join(cwd, entryName);
+    const COLS = process.stdout.columns || 80;
+    let overlayLines = 0;
+
+    function clearOverlay() {
+      if (overlayLines > 0) {
+        process.stdout.write(`\x1b[${overlayLines}A\r\x1b[J`);
+        overlayLines = 0;
+      }
+    }
+
+    function renderOverlay() {
+      clearOverlay();
+      let frame = "\n";
+
+      // Title
+      const icon = isDir ? "📁" : "📄";
+      frame += ` ${chalk.bold(icon + " " + entryName)}\x1b[K\n`;
+      frame += ` ${chalk.gray("─".repeat(Math.min(COLS - 2, 60)))}\x1b[K\n`;
+
+      // Preview content
+      if (isDir) {
+        // Show directory contents
+        try {
+          const children = fs.readdirSync(full, { withFileTypes: true }).slice(0, 10);
+          if (children.length === 0) {
+            frame += `  ${chalk.gray("(empty directory)")}\x1b[K\n`;
+          } else {
+            for (const c of children) {
+              const prefix = c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ");
+              frame += prefix + chalk.white(c.name) + "\x1b[K\n";
+            }
+            const total = fs.readdirSync(full).length;
+            if (total > 10) frame += `  ${chalk.gray(`... and ${total - 10} more`)}\x1b[K\n`;
+          }
+        } catch {
+          frame += `  ${chalk.red("cannot read directory")}\x1b[K\n`;
+        }
+      } else {
+        // Show file preview (first 8 lines)
+        try {
+          const content = fs.readFileSync(full, "utf8").split("\n").slice(0, 8);
+          for (const line of content) {
+            const display = line.length > COLS - 4 ? line.slice(0, COLS - 5) + "…" : line;
+            frame += `  ${chalk.white(display)}\x1b[K\n`;
+          }
+          const total = fs.readFileSync(full, "utf8").split("\n").length;
+          if (total > 8) frame += `  ${chalk.gray(`... ${total - 8} more lines`)}\x1b[K\n`;
+        } catch {
+          frame += `  ${chalk.gray("(binary file)")}\x1b[K\n`;
+        }
+      }
+
+      frame += ` ${chalk.gray("─".repeat(Math.min(COLS - 2, 60)))}\x1b[K\n`;
+      frame += `  ${chalk.yellow.bold("Move to Trash")} ${chalk.white(entryName)}${isDir ? chalk.gray(" and all its contents") : ""}?\x1b[K\n`;
+      frame += `  ${chalk.bgYellow.black.bold(" y ")} ${chalk.gray("yes    ")}${chalk.bgGray.white.bold(" n ")} ${chalk.gray("no / esc")}\x1b[K\n`;
+
+      // Count actual newlines written
+      let lineCount = 0;
+      for (let i = 0; i < frame.length; i++) {
+        if (frame[i] === "\n") lineCount++;
+      }
+      overlayLines = lineCount;
+      process.stdout.write(frame);
+    }
+
+    function onConfirmKey(key: string) {
+      if (key === "y" || key === "Y") {
+        stdin.removeListener("data", onConfirmKey);
+
+        try {
+          moveToTrash(full);
+          entries = entries.filter((e) => e.name !== entryName);
+          if (entries.length === 0) return exit();
+          selectedIndex = Math.min(selectedIndex, entries.length - 1);
+        } catch (err: any) {
+          process.stdout.write(`\n  ${chalk.red("Error: " + err.message)}\n`);
+          setTimeout(() => { stdin.on("data", onKey); render(); }, 1500);
+          return;
+        }
+
+        // Clear overlay + ls grid together, then re-render ls fresh
+        const totalLines = lastRenderedLines + overlayLines;
+        process.stdout.write(`\x1b[${totalLines}A\r\x1b[J`);
+        lastRenderedLines = 0;
+        overlayLines = 0;
+        stdin.on("data", onKey);
+        render();
+        return;
+      }
+
+      if (key === "n" || key === "N" || key === "\u001b" || key === "\u0003") {
+        stdin.removeListener("data", onConfirmKey);
+
+        // Clear overlay + ls grid, re-render ls
+        const totalLines = lastRenderedLines + overlayLines;
+        process.stdout.write(`\x1b[${totalLines}A\r\x1b[J`);
+        lastRenderedLines = 0;
+        overlayLines = 0;
+        stdin.on("data", onKey);
+        render();
+      }
+    }
+
+    stdin.removeListener("data", onKey);
+    stdin.on("data", onConfirmKey);
+    renderOverlay();
+  }
+
+  // ─── Main key handler ──────────────────────────────────────────────────────
+
   function onKey(key: string) {
     const perRow = getPerRow();
 
-    if (key === "\u0003" || key === "q" || key === "\u001b") return exit();
+    if (key === "\u0003" || key === "\u001b") return exit();
+
+    if (key === "d" || key === "D") {
+      const selected = entries[selectedIndex];
+      return showDeleteConfirm(selected.name, selected.isDir);
+    }
 
     if (key === "\r") {
       const selected = entries[selectedIndex];
@@ -156,7 +247,6 @@ export function interactiveLs(onExit: () => void) {
         try { process.chdir(path.join(cwd, selected.name)); } catch {}
         return exit();
       } else {
-        // File selected — show editor picker
         return showEditorPicker(path.join(cwd, selected.name));
       }
     }
@@ -173,35 +263,21 @@ export function interactiveLs(onExit: () => void) {
     if (idx !== selectedIndex) { selectedIndex = idx; render(); }
   }
 
+  // ─── Editor picker ─────────────────────────────────────────────────────────
+
   function showEditorPicker(filePath: string) {
     const editors = getInstalledEditors();
-
-    if (editors.length === 0) {
-      // No editors found — just exit
-      return exit();
-    }
+    if (editors.length === 0) return exit();
 
     if (editors.length === 1) {
-      // Only one editor — open directly
+      if (lastRenderedLines > 0) process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
       cleanup();
-      if (lastRenderedLines > 0) {
-        process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
-      }
-      setTimeout(() => {
-        onExit();
-        // Signal to open file — pass via env so executor can pick it up
-        // Actually spawn directly here via execFileSync won't work for TUI editors
-        // Instead, write a small helper: set env var and let caller handle it
-      }, 10);
+      setTimeout(() => { pendingOpen = { editor: editors[0], file: filePath }; onExit(); }, 20);
       return;
     }
 
-    // Multiple editors — render inline picker below current ls UI
-    const COL_WIDTH = Math.max(...editors.map((e) => e.length)) + 2;
-
-    function getPerRowE() {
-      return Math.max(1, Math.floor((process.stdout.columns || 80) / COL_WIDTH));
-    }
+    const EW = Math.max(...editors.map((e) => e.length)) + 2;
+    function getPerRowE() { return Math.max(1, Math.floor((process.stdout.columns || 80) / EW)); }
 
     let selIdx = 0;
     let pickerLines = 0;
@@ -210,24 +286,19 @@ export function interactiveLs(onExit: () => void) {
       const perRow = getPerRowE();
       const totalRows = Math.ceil(editors.length / perRow);
       let frame = "";
-
-      if (pickerLines > 0) {
-        frame += `\x1b[${pickerLines}A\r\x1b[J`;
-      }
+      if (pickerLines > 0) frame += `\x1b[${pickerLines}A\r\x1b[J`;
 
       const fname = chalk.white(path.basename(filePath));
       const k = (s: string) => chalk.bgGray.white.bold(` ${s} `);
-      frame += `\n ${chalk.gray("open")} ${fname} ${chalk.gray("with:")}\n\x1b[K\n`;
+      frame += `\n ${chalk.gray("open")} ${fname} ${chalk.gray("with:")}\x1b[K\n\x1b[K\n`;
 
       for (let row = 0; row < totalRows; row++) {
         let line = " ";
         for (let col = 0; col < perRow; col++) {
           const i = row * perRow + col;
           if (i >= editors.length) break;
-          const name = editors[i].padEnd(COL_WIDTH, " ");
-          line += i === selIdx
-            ? chalk.bgWhite.black.bold(name)
-            : chalk.cyan(name);
+          const name = editors[i].padEnd(EW, " ");
+          line += i === selIdx ? chalk.bgWhite.black.bold(name) : chalk.cyan(name);
         }
         frame += line + "\x1b[K\n";
       }
@@ -236,42 +307,23 @@ export function interactiveLs(onExit: () => void) {
       process.stdout.write(frame);
     }
 
-    function clearEditorPicker() {
-      if (pickerLines > 0) {
-        process.stdout.write(`\x1b[${pickerLines}A\r\x1b[J`);
-        pickerLines = 0;
-      }
-    }
-
     function onEditorKey(key: string) {
       const perRow = getPerRowE();
-
       if (key === "\u0003" || key === "\u001b") {
-        // Cancel — go back to ls
         stdin.removeListener("data", onEditorKey);
-        clearEditorPicker();
+        if (pickerLines > 0) process.stdout.write(`\x1b[${pickerLines}A\r\x1b[J`);
         stdin.on("data", onKey);
         return;
       }
-
       if (key === "\r") {
         const chosen = editors[selIdx];
         stdin.removeListener("data", onEditorKey);
-        clearEditorPicker();
+        if (pickerLines > 0) process.stdout.write(`\x1b[${pickerLines}A\r\x1b[J`);
+        if (lastRenderedLines > 0) process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
         cleanup();
-        if (lastRenderedLines > 0) {
-          process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
-        }
-        process.stdout.write("\x1b[?25h");
-        // Pass chosen editor + file back to shell via onExit callback
-        setTimeout(() => {
-          // Store pending open so main can execute it
-          pendingOpen = { editor: chosen, file: filePath };
-          onExit();
-        }, 20);
+        setTimeout(() => { pendingOpen = { editor: chosen, file: filePath }; onExit(); }, 20);
         return;
       }
-
       let i = selIdx;
       if (key === "\u001b[A") i -= perRow;
       if (key === "\u001b[B") i += perRow;
@@ -286,13 +338,13 @@ export function interactiveLs(onExit: () => void) {
     renderEditorPicker();
   }
 
+  // ─── Init ──────────────────────────────────────────────────────────────────
+
   stdin.setRawMode(true);
   stdin.resume();
   stdin.setEncoding("utf8");
   process.stdout.write("\x1b[?25l");
-
   stdin.on("data", onKey);
-
   lastRenderedLines = 0;
   render();
 }

@@ -1,11 +1,14 @@
+import { loadFshrc, generateDefaultFshrc } from "./fshrc";
 import fs from "fs";
 import path from "path";
+import chalk from "chalk";
 import { interactiveLs, pendingOpen, clearPendingOpen } from "./interactiveLs";
 import { pauseInput, resumeInput, reloadHistoryInRl } from "./main";
+import { interactiveTrash } from "./trashLs";
 import { showHistoryManager, loadHistoryEntries } from "./historyManager";
 import { setAlias, removeAlias, getAllAliases } from "./aliases";
 
-const builtins = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias", "clear", "history"];
+const builtins = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias", "clear", "history", "fshrc", "trash"];
 
 export function handleBuiltin(
   cmd: string,
@@ -13,6 +16,16 @@ export function handleBuiltin(
   done: () => void
 ): boolean {
   switch (cmd) {
+    case "trash":
+      pauseInput();
+      interactiveTrash(() => resumeInput());
+      return true;
+
+    case "fshrc":
+      handleFshrc(args);
+      done();
+      return true;
+
     case "history":
       pauseInput();
       showHistoryManager(loadHistoryEntries(), (updated) => {
@@ -184,4 +197,33 @@ function handleType(args: string[]) {
   }
 
   console.log(`${target}: not found`);
+}
+
+function handleFshrc(args: string[]) {
+  const FSHRC = path.join(process.env.HOME ?? "~", ".fshrc");
+  const sub = args[0];
+
+  if (sub === "init") {
+    // Create default .fshrc if it doesn't exist
+    if (fs.existsSync(FSHRC)) {
+      console.log(`~/.fshrc already exists. Use 'fshrc reload' to reload it.`);
+      return;
+    }
+    fs.writeFileSync(FSHRC, generateDefaultFshrc(), "utf8");
+    console.log(`Created ~/.fshrc — edit it and run 'fshrc reload' to apply.`);
+    return;
+  }
+
+  if (sub === "reload" || !sub) {
+    loadFshrc();
+    console.log(chalk.green("✓") + chalk.white(" fsh reloaded"));
+    return;
+  }
+
+  if (sub === "path") {
+    console.log(FSHRC);
+    return;
+  }
+
+  console.log(`usage: fshrc [init|reload|path]`);
 }

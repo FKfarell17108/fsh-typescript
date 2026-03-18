@@ -5,19 +5,13 @@ import chalk from "chalk";
 export const HISTORY_FILE = path.join(process.env.HOME ?? "~", ".fsh_history");
 export const HISTORY_SIZE = 500;
 
-export type HistoryEntry = {
-  cmd: string;
-  ts: number;
-};
-
-// ─── Read / Write ─────────────────────────────────────────────────────────────
+export type HistoryEntry = { cmd: string; ts: number };
 
 export function loadHistoryEntries(): HistoryEntry[] {
   try {
     const lines = fs.readFileSync(HISTORY_FILE, "utf8").split("\n").filter(Boolean);
     const entries: HistoryEntry[] = [];
     const seen = new Set<string>();
-
     for (const line of lines) {
       const sep = line.indexOf("|");
       let cmd: string, ts: number;
@@ -25,11 +19,8 @@ export function loadHistoryEntries(): HistoryEntry[] {
       else { ts = parseInt(line.slice(0, sep)); cmd = line.slice(sep + 1); }
       if (cmd && !seen.has(cmd)) { entries.push({ cmd, ts }); seen.add(cmd); }
     }
-
     return entries.reverse().slice(0, HISTORY_SIZE);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 export function saveHistoryEntries(entries: HistoryEntry[]) {
@@ -47,51 +38,45 @@ export function saveHistoryEntries(entries: HistoryEntry[]) {
   } catch {}
 }
 
-export function entriesToStrings(entries: HistoryEntry[]): string[] {
-  return entries.map((e) => e.cmd);
-}
+export function entriesToStrings(e: HistoryEntry[]): string[] { return e.map((x) => x.cmd); }
 
 export function pushEntry(entries: HistoryEntry[], cmd: string): HistoryEntry[] {
-  const filtered = entries.filter((e) => e.cmd !== cmd);
-  return [{ cmd, ts: Date.now() }, ...filtered].slice(0, HISTORY_SIZE);
+  return [{ cmd, ts: Date.now() }, ...entries.filter((e) => e.cmd !== cmd)].slice(0, HISTORY_SIZE);
 }
-
-// ─── Time buckets ─────────────────────────────────────────────────────────────
 
 type Bucket = { label: string; entries: HistoryEntry[] };
 
 function groupByTime(entries: HistoryEntry[]): Bucket[] {
   const now = Date.now();
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const startOfYesterday = new Date(startOfToday); startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - 7);
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  const today = d.getTime();
+  const yesterday = today - 86400000;
+  const week = today - 7 * 86400000;
 
-  const buckets: Bucket[] = [
-    { label: "Last hour",  entries: [] },
-    { label: "Today",      entries: [] },
-    { label: "Yesterday",  entries: [] },
-    { label: "This week",  entries: [] },
-    { label: "Older",      entries: [] },
+  const b: Bucket[] = [
+    { label: "Last hour", entries: [] },
+    { label: "Today",     entries: [] },
+    { label: "Yesterday", entries: [] },
+    { label: "This week", entries: [] },
+    { label: "Older",     entries: [] },
   ];
 
   for (const e of entries) {
     const age = now - e.ts;
-    if (e.ts === 0 || e.ts < startOfWeek.getTime())        buckets[4].entries.push(e);
-    else if (e.ts < startOfYesterday.getTime())            buckets[3].entries.push(e);
-    else if (e.ts < startOfToday.getTime())                buckets[2].entries.push(e);
-    else if (age < 3_600_000)                              buckets[0].entries.push(e);
-    else                                                   buckets[1].entries.push(e);
+    if      (e.ts === 0 || e.ts < week)      b[4].entries.push(e);
+    else if (e.ts < yesterday)               b[3].entries.push(e);
+    else if (e.ts < today)                   b[2].entries.push(e);
+    else if (age < 3_600_000)                b[0].entries.push(e);
+    else                                     b[1].entries.push(e);
   }
-
-  return buckets.filter((b) => b.entries.length > 0);
+  return b.filter((x) => x.entries.length > 0);
 }
 
-// ─── Interactive history manager ──────────────────────────────────────────────
+type Row =
+  | { kind: "header"; bucketIdx: number }
+  | { kind: "entry";  entry: HistoryEntry; bucketIdx: number };
 
-export function showHistoryManager(
-  entries: HistoryEntry[],
-  onDone: (updated: HistoryEntry[]) => void
-) {
+export function showHistoryManager(entries: HistoryEntry[], onDone: (u: HistoryEntry[]) => void) {
   const stdin = process.stdin;
 
   if (entries.length === 0) {
@@ -99,18 +84,12 @@ export function showHistoryManager(
     return onDone(entries);
   }
 
-  type Row =
-    | { kind: "header"; bucketIdx: number }
-    | { kind: "entry";  entry: HistoryEntry; bucketIdx: number };
-
   const buckets = groupByTime(entries);
-  let rows: Row[] = buildRows(buckets);
-  let cursor = 0;
-  let lastRenderedLines = 0;
+  const COLS = process.stdout.columns || 80;
 
-  function buildRows(bs: Bucket[]): Row[] {
+  function buildRows(): Row[] {
     const r: Row[] = [];
-    bs.forEach((b, bi) => {
+    buckets.forEach((b, bi) => {
       if (b.entries.length === 0) return;
       r.push({ kind: "header", bucketIdx: bi });
       b.entries.forEach((e) => r.push({ kind: "entry", entry: e, bucketIdx: bi }));
@@ -118,59 +97,70 @@ export function showHistoryManager(
     return r;
   }
 
-  const COLS = process.stdout.columns || 80;
+  let rows = buildRows();
+  let cursor = 0;
+  let listLines = 0; // only track the list area, NOT the hint bar
 
-  function render() {
-    const totalRows = rows.length;
+  const k = (s: string) => chalk.bgGray.white.bold(` ${s} `);
+
+  function renderHint(isOnHeader: boolean) {
+    return " " + k("↑↓") + chalk.gray(" navigate  ") +
+      k("d") + chalk.gray(isOnHeader ? " delete group  " : " delete entry  ") +
+      k("D") + chalk.gray(" delete all  ") +
+      k("q") + chalk.gray("/") + k("esc") + chalk.gray(" quit") + "\x1b[K";
+  }
+
+  function renderList() {
     let frame = "";
 
-    // Move up to overwrite previous render
-    if (lastRenderedLines > 0) {
-      frame += `\x1b[${lastRenderedLines}A\r\x1b[J`;
+    // Only move up by listLines (the list area), never touching hint bar
+    if (listLines > 0) {
+      frame += `\x1b[${listLines}A\r\x1b[J`;
     }
 
-    // Hint bar
-    const k = (s: string) => chalk.bgGray.white.bold(` ${s} `);
-    frame += "\n";
-    frame +=
-      " " + k("↑↓") + chalk.gray(" navigate  ") +
-      k("d") + chalk.gray(" delete group  ") +
-      k("D") + chalk.gray(" delete all  ") +
-      k("q") + chalk.gray("/") + k("esc") + chalk.gray(" quit") +
-      "\x1b[K\n\x1b[K\n";
+    // Update hint in place (move up 1 more to reach hint, rewrite, come back)
+    frame += `\x1b[1A\r${renderHint(rows[cursor]?.kind === "header")}\n`;
 
-    for (let i = 0; i < totalRows; i++) {
+    for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const isActive = i === cursor;
+      const active = i === cursor;
 
       if (row.kind === "header") {
         const b = buckets[row.bucketIdx];
         const label = `  ${b.label}  (${b.entries.length} commands)`;
-        frame += isActive
+        frame += active
           ? chalk.bgYellow.black.bold(label.padEnd(COLS - 1)) + "\x1b[K\n"
           : chalk.yellow.bold(label) + "\x1b[K\n";
       } else {
         const { cmd, ts } = row.entry;
-        const time = ts ? chalk.gray(new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })) : "";
-        const maxCmd = COLS - 10;
+        const time = ts
+          ? chalk.gray(new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+          : "";
+        const maxCmd = COLS - 12;
         const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
-        const padded = ("    " + display).padEnd(COLS - 8);
-        frame += isActive
+        const padded = ("    " + display).padEnd(COLS - 10);
+        frame += active
           ? chalk.bgWhite.black.bold(padded) + "  " + time + "\x1b[K\n"
           : chalk.white(padded) + "  " + time + "\x1b[K\n";
       }
     }
 
-    // hint(1) + blank(1) + rows
-    lastRenderedLines = 2 + totalRows;
+    listLines = rows.length;
     process.stdout.write(frame);
   }
 
-  function clearUI() {
-    if (lastRenderedLines > 0) {
-      process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
-      lastRenderedLines = 0;
-    }
+  function initialRender() {
+    // Write hint bar once, then list below it
+    process.stdout.write("\n" + renderHint(rows[cursor]?.kind === "header") + "\n");
+    listLines = 0;
+    renderList();
+  }
+
+  function clearAll() {
+    // Clear list + hint bar + the leading newline
+    if (listLines > 0) process.stdout.write(`\x1b[${listLines}A\r\x1b[J`);
+    // Also clear hint line and the \n before it
+    process.stdout.write(`\x1b[1A\r\x1b[J\x1b[1A\r\x1b[J`);
   }
 
   function cleanup() {
@@ -180,58 +170,36 @@ export function showHistoryManager(
   }
 
   function exit() {
-    clearUI();
+    clearAll();
     cleanup();
     const remaining = buckets.flatMap((b) => b.entries);
     setTimeout(() => onDone(remaining), 20);
   }
 
-  function deleteBucketAtCursor() {
+  function deleteAtCursor() {
     if (rows.length === 0) return;
     const row = rows[cursor];
-    buckets[row.bucketIdx].entries = [];
-    rows = buildRows(buckets);
+    if (row.kind === "header") {
+      buckets[row.bucketIdx].entries = [];
+    } else {
+      buckets[row.bucketIdx].entries = buckets[row.bucketIdx].entries.filter(
+        (e) => e.cmd !== row.entry.cmd
+      );
+    }
+    rows = buildRows();
     if (rows.length === 0) return exit();
     cursor = Math.min(cursor, rows.length - 1);
-    render();
+    renderList();
   }
 
-  let escBuf = "";
-  let escTimer: ReturnType<typeof setTimeout> | null = null;
-
   function onKey(raw: string) {
-    // Buffer escape sequences
-    if (raw === "\u001b") {
-      escBuf = raw;
-      escTimer = setTimeout(() => {
-        // Standalone esc — treat as quit
-        escBuf = "";
-        exit();
-      }, 50);
-      return;
-    }
-
-    if (escBuf) {
-      escBuf += raw;
-      if (escTimer) { clearTimeout(escTimer); escTimer = null; }
-
-      // Wait for full sequence
-      if (escBuf === "\u001b[") return;
-
-      const seq = escBuf;
-      escBuf = "";
-
-      if (seq === "\u001b[A") { if (cursor > 0) { cursor--; render(); } }
-      else if (seq === "\u001b[B") { if (cursor < rows.length - 1) { cursor++; render(); } }
-      return;
-    }
-
-    if (raw === "\u0003" || raw === "q") return exit();
-    if (raw === "D") {
-      buckets.forEach((b) => { b.entries = []; });
-      return exit();
-    }
-    if (raw === "d" || raw === "\x7f") return deleteBucketAtCursor();
+    if (raw === "\u001b[A") { if (cursor > 0) { cursor--; renderList(); } return; }
+    if (raw === "\u001b[B") { if (cursor < rows.length - 1) { cursor++; renderList(); } return; }
+    if (raw === "\u001b" || raw === "\u0003") return exit();
+    if (raw.startsWith("\u001b")) return; // ignore other sequences
+    if (raw === "q") return exit();
+    if (raw === "D") { buckets.forEach((b) => { b.entries = []; }); return exit(); }
+    if (raw === "d" || raw === "\x7f") return deleteAtCursor();
   }
 
   stdin.setRawMode(true);
@@ -240,6 +208,5 @@ export function showHistoryManager(
   process.stdout.write("\x1b[?25l");
   stdin.on("data", onKey);
 
-  lastRenderedLines = 0;
-  render();
+  initialRender();
 }
