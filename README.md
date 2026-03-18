@@ -1,6 +1,6 @@
 # FSH (FK Shell) v1.0.0
 
-> A custom Unix shell built from scratch in TypeScript, designed for a modern and interactive terminal experience.
+> A custom Unix shell built from scratch using TypeScript, designed to offer a unique terminal experience.
 
 ![fsh](terminal.png)
 
@@ -8,18 +8,9 @@
 
 ## What is fsh?
 
-**FSH** (FK Shell) is a fully functional Unix shell, developed from scratch using TypeScript and Node.js. FSH replaces your default shell (bash/zsh) and provides all standard shell features such as running commands, piping, and redirection, along with a modern and interactive user interface (UI).
+**FSH** (FK Shell) is a full-featured Unix shell developed from scratch using TypeScript and Node.js. FSH replaces the default shell (bash/zsh) and provides all standard shell features, such as executing commands, piping, and redirection.
 
-**Shell** is a program that runs when you open a terminal. It reads your commands, executes them, and displays the results. FSH does all of that, plus it significantly enhances your daily experience with a visual interface for browsing files, tab-based autocompletion, history management, and much more.
-
----
-
-## Built With
-
-- **TypeScript**: Fully typed codebase
-- **Node.js**: Runtime
-- **node-pty**: PTY support for interactive programs (vim, nano, htop, etc.)
-- **chalk**: Terminal colors
+**Shell** is a program that runs when you open a terminal. It reads commands, executes them, and displays the results. FSH does all of that, and significantly enhances the experience with features like file browsing, tab-based autocompletion, history management, and much more.
 
 ---
 
@@ -129,41 +120,56 @@ Custom system info display with fsh ASCII logo showing OS, kernel, shell version
 
 ### Install
 
+Clone the repository
 ```bash
-# Clone the repository
 git clone https://github.com/FKfarell17108/fsh-universe.git
 cd fsh-universe
+```
 
-# Install dependencies
+Install dependencies
+```bash
 npm install
+```
 
-# Build
+Build
+```bash
 npm run build
 ```
 
 ### Set as Default Shell
 
 ```bash
-# Create the shell script
 sudo nano /usr/local/bin/fsh
 ```
 
 Paste this content:
 ```bash
 #!/bin/bash
+
+if [[ ! -t 0 ]] || \
+   [[ -n "$VSCODE_AGENT_FOLDER" ]] || \
+   [[ -n "$VSCODE_IPC_HOOK_CLI" ]] || \
+   [[ -n "$VSCODE_HANDLES_SIGPIPE" ]]; then
+  exec /bin/bash "$@"
+fi
+
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-exec node /path/to/fsh-universe/dist/main.js "$@"
+exec node /home/farell/projects/shell/fsh-universe/dist/main.js "$@"
 ```
 
+Make executable
 ```bash
-# Make executable
 sudo chmod +x /usr/local/bin/fsh
+```
 
-# Register as valid shell
+Register as valid shell
+```bash
 echo "/usr/local/bin/fsh" | sudo tee -a /etc/shells
+```
 
-# Set as default
+Set as default
+```bash
 chsh -s /usr/local/bin/fsh
 ```
 
@@ -174,7 +180,7 @@ Restart your terminal.
 ```bash
 cd ~/path/to/fsh-universe
 npm run build
-# Restart terminal — changes apply immediately
+# Restart terminal - changes apply immediately
 ```
 
 ---
