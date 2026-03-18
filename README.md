@@ -2,7 +2,7 @@
 
 > A custom Unix shell built from scratch in TypeScript, designed for a modern and interactive terminal experience.
 
-![fsh](fsh-universe.png)
+![fsh](terminal.png)
 
 ---
 
