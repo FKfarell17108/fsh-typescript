@@ -111,7 +111,8 @@ export function showPicker(
 
   const stdin = process.stdin;
   const maxNameLen = Math.max(...candidates.map((c) => c.length));
-  const COL_WIDTH = maxNameLen + 2;
+  // Minimum 16 chars wide so short history items (like "ls") don't make tiny columns
+  const COL_WIDTH = Math.max(maxNameLen + 2, 16);
   let selectedIndex = 0;
   let pickerLines = 0;
 

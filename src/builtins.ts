@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { interactiveLs, pendingOpen, clearPendingOpen } from "./interactiveLs";
-import { pauseInput, resumeInput } from "./main";
+import { pauseInput, resumeInput, reloadHistoryInRl } from "./main";
+import { showHistoryManager, loadHistoryEntries } from "./historyManager";
 import { setAlias, removeAlias, getAllAliases } from "./aliases";
 
-const builtins = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias"];
+const builtins = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias", "clear", "history"];
 
 export function handleBuiltin(
   cmd: string,
@@ -12,6 +13,22 @@ export function handleBuiltin(
   done: () => void
 ): boolean {
   switch (cmd) {
+    case "history":
+      pauseInput();
+      showHistoryManager(loadHistoryEntries(), (updated) => {
+        reloadHistoryInRl(updated);
+        resumeInput();
+      });
+      return true;
+
+    case "clear": {
+      const rows = process.stdout.rows || 24;
+      // Push content out of viewport, then clear screen and scrollback
+      process.stdout.write("\n".repeat(rows) + "\x1b[3J\x1b[2J\x1b[H");
+      done();
+      return true;
+    }
+
     case "exit":
       process.exit(0);
 

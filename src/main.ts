@@ -1,16 +1,26 @@
 import readline from "readline";
+import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { parseInput } from "./parser";
-import { execute } from "./executor";
+import { execute, getLastExitCode } from "./executor";
 import { expandAliases } from "./aliases";
 import { getCandidates, commonPrefix, showPicker } from "./completion";
 import { getGitInfo, formatGitPrompt } from "./git";
+import {
+  loadHistoryEntries, saveHistoryEntries,
+  entriesToStrings, pushEntry, HistoryEntry,
+} from "./historyManager";
 
+// ─── State ────────────────────────────────────────────────────────────────────
 
 let rl: readline.Interface;
-let savedHistory: string[] = [];
+let historyEntries: HistoryEntry[] = loadHistoryEntries();
+let savedHistory: string[] = entriesToStrings(historyEntries);
 let tabHandlerActive = false;
+let lastExitCodeForPrompt = 0;
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
 
 export function getPrompt(): string {
   const cwd = process.cwd();
@@ -19,12 +29,23 @@ export function getPrompt(): string {
   const gitInfo = getGitInfo();
   const git = gitInfo ? " " + formatGitPrompt(gitInfo) : "";
 
-  return `fsh/${chalk.blue(folder)}${git} > `;
+  const arrow = lastExitCodeForPrompt !== 0
+    ? chalk.red(" > ")
+    : " > ";
+
+  return `fsh/${chalk.blue(folder)}${git}${arrow}`;
 }
+
+export function setLastExitCode(code: number) {
+  lastExitCodeForPrompt = code;
+}
+
+// ─── Input management ─────────────────────────────────────────────────────────
 
 export function pauseInput() {
   if (rl) {
     savedHistory = (rl as any).history?.slice() ?? [];
+    saveHistoryEntries(historyEntries);
     rl.close();
   }
   tabHandlerActive = false;
@@ -37,7 +58,16 @@ export function resumeInput() {
   }, 50);
 }
 
-// ─── Tab intercept via _ttyWrite override ────────────────────────────────────
+export function reloadHistoryInRl(updated: HistoryEntry[]) {
+  historyEntries = updated;
+  savedHistory = entriesToStrings(updated);
+  saveHistoryEntries(updated);
+  if (rl) {
+    (rl as any).history = savedHistory.slice();
+  }
+}
+
+// ─── Tab intercept ────────────────────────────────────────────────────────────
 
 function setupTabIntercept() {
   const rlAny = rl as any;
@@ -49,7 +79,6 @@ function setupTabIntercept() {
   rlAny._ttyWrite = function (s: string, key: any) {
     if (!key) return original(s, key);
 
-    // Tab handling
     if (tabHandlerActive && key.name === "tab") {
       const line: string = rlAny.line ?? "";
 
@@ -90,17 +119,13 @@ function openPicker(candidates: string[], line: string, partial: string) {
   tabHandlerActive = false;
   pauseInput();
 
-  // Render picker below the current prompt line (no newline — cursor stays on prompt row)
-  // Save cursor pos, move to next line for picker, restore after
   showPicker(
     candidates,
     (chosen) => {
       const newLine = line.slice(0, line.length - partial.length) + chosen;
       resumeInputWithLine(newLine);
     },
-    () => {
-      resumeInputWithLine(line);
-    }
+    () => resumeInputWithLine(line)
   );
 }
 
@@ -111,11 +136,12 @@ function resumeInputWithLine(restoreLine: string) {
   }, 50);
 }
 
-// ─── rl management ───────────────────────────────────────────────────────────
+// ─── rl management ────────────────────────────────────────────────────────────
 
 function createRl() {
   if (rl) {
     savedHistory = (rl as any).history?.slice() ?? [];
+    saveHistoryEntries(historyEntries);
     rl.close();
   }
 
@@ -134,8 +160,10 @@ function createRl() {
   }
 
   rl.on("SIGINT", () => {
+    lastExitCodeForPrompt = 0;
     process.stdout.write("\n");
-    process.exit(0);
+    createRl();
+    prompt();
   });
 
   setupTabIntercept();
@@ -162,10 +190,18 @@ function prompt() {
     const cleanInput = input.trim();
     if (!cleanInput) return prompt();
 
+    // Push to timestamped history
+    historyEntries = pushEntry(historyEntries, cleanInput);
+    savedHistory = entriesToStrings(historyEntries);
+    saveHistoryEntries(historyEntries);
+
     const expanded = expandAliases(cleanInput);
     const statement = parseInput(expanded);
 
-    execute(statement, () => prompt());
+    execute(statement, () => {
+      setLastExitCode(getLastExitCode());
+      prompt();
+    });
   });
 }
 
@@ -176,10 +212,17 @@ function promptWithLine(prefill: string) {
     const cleanInput = input.trim();
     if (!cleanInput) return prompt();
 
+    historyEntries = pushEntry(historyEntries, cleanInput);
+    savedHistory = entriesToStrings(historyEntries);
+    saveHistoryEntries(historyEntries);
+
     const expanded = expandAliases(cleanInput);
     const statement = parseInput(expanded);
 
-    execute(statement, () => prompt());
+    execute(statement, () => {
+      setLastExitCode(getLastExitCode());
+      prompt();
+    });
   });
 
   if (prefill) {
