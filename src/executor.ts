@@ -20,6 +20,7 @@ const PTY_COMMANDS = new Set([
   "ssh", "tmux", "screen",
   "python", "python3", "node", "irb", "ghci", "lua",
   "bash", "zsh", "fish", "sh",
+  "git",
 ]);
 
 function needsPty(cmd: string): boolean {
