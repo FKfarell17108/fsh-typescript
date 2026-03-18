@@ -11,6 +11,7 @@ import {
   loadHistoryEntries, saveHistoryEntries,
   entriesToStrings, pushEntry, HistoryEntry,
 } from "./historyManager";
+import { highlight } from "./highlight";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,26 @@ function setupTabIntercept() {
 
     return original(s, key);
   };
+
+  // After every keypress, re-render the line with syntax colors
+  const origRefresh = rlAny._refreshLine?.bind(rl);
+  if (origRefresh) {
+    rlAny._refreshLine = function () {
+      const line: string = rlAny.line ?? "";
+      const cursor: number = rlAny.cursor ?? 0;
+
+      if (line.length === 0) return origRefresh();
+
+      // Swap in highlighted line, keep cursor at same logical position
+      const highlighted = highlight(line);
+      rlAny.line = highlighted;
+      rlAny.cursor = highlighted.length; // always end — readline will reposition
+      origRefresh();
+      // Restore real values immediately
+      rlAny.line = line;
+      rlAny.cursor = cursor;
+    };
+  }
 }
 
 function openPicker(candidates: string[], line: string, partial: string) {
