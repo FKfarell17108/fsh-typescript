@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
+import { w, at, clr, C, R, NAVBAR_ROWS, FOOTER_ROWS, drawNavbar, drawFooter, kb, enterAlt, exitAlt, clearScreen } from "./tui";
 
 export const HISTORY_FILE = path.join(process.env.HOME ?? "~", ".fsh_history");
 export const HISTORY_SIZE = 500;
@@ -51,10 +52,10 @@ type Bucket = { label: string; entries: HistoryEntry[] };
 function groupByTime(entries: HistoryEntry[]): Bucket[] {
   const now = Date.now();
   const d = new Date(); d.setHours(0, 0, 0, 0);
-  const today = d.getTime();
-  const yesterday = today - 86400000;
-  const week = today - 7 * 86400000;
-  const b: Bucket[] = [
+  const today     = d.getTime();
+  const yesterday = today - 86_400_000;
+  const week      = today - 7 * 86_400_000;
+  const buckets: Bucket[] = [
     { label: "Last hour", entries: [] },
     { label: "Today",     entries: [] },
     { label: "Yesterday", entries: [] },
@@ -63,13 +64,13 @@ function groupByTime(entries: HistoryEntry[]): Bucket[] {
   ];
   for (const e of entries) {
     const age = now - e.ts;
-    if      (e.ts === 0 || e.ts < week) b[4].entries.push(e);
-    else if (e.ts < yesterday)          b[3].entries.push(e);
-    else if (e.ts < today)              b[2].entries.push(e);
-    else if (age < 3_600_000)           b[0].entries.push(e);
-    else                                b[1].entries.push(e);
+    if      (e.ts === 0 || e.ts < week) buckets[4].entries.push(e);
+    else if (e.ts < yesterday)          buckets[3].entries.push(e);
+    else if (e.ts < today)              buckets[2].entries.push(e);
+    else if (age < 3_600_000)           buckets[0].entries.push(e);
+    else                                buckets[1].entries.push(e);
   }
-  return b.filter((x) => x.entries.length > 0);
+  return buckets.filter((x) => x.entries.length > 0);
 }
 
 type Row =
@@ -85,9 +86,6 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (u: HistoryE
   }
 
   const buckets = groupByTime(entries);
-  const COLS = process.stdout.columns || 80;
-  const TERM_ROWS = (process.stdout.rows || 24) - 4;
-  const VISIBLE = Math.min(TERM_ROWS, 20);
 
   function buildRows(): Row[] {
     const r: Row[] = [];
@@ -99,102 +97,113 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (u: HistoryE
     return r;
   }
 
-  let rows = buildRows();
-  let cursor = 0;
+  let allRows   = buildRows();
+  let cursor    = 0;
   let scrollTop = 0;
-  let lastRenderedLines = 0;
+
+  function vis(): number {
+    return Math.max(1, R() - NAVBAR_ROWS - FOOTER_ROWS);
+  }
 
   function adjustScroll() {
+    const v = vis();
     if (cursor < scrollTop) scrollTop = cursor;
-    if (cursor >= scrollTop + VISIBLE) scrollTop = cursor - VISIBLE + 1;
+    if (cursor >= scrollTop + v) scrollTop = cursor - v + 1;
   }
 
-  function renderHint(): string {
-    const k = (s: string) => chalk.bgGray.white.bold(` ${s} `);
-    const isOnHeader = rows[cursor]?.kind === "header";
-    const scrollInfo = rows.length > VISIBLE
-      ? chalk.dim(` [${cursor + 1}/${rows.length}]`)
-      : "";
-    return " " + k("↑↓") + chalk.gray(" navigate  ") +
-      k("d") + chalk.gray(isOnHeader ? " delete group  " : " delete entry  ") +
-      k("D") + chalk.gray(" delete all  ") +
-      k("esc") + chalk.gray(" quit") +
-      scrollInfo + "\x1b[K";
+  function totalCmds(): number {
+    return buckets.reduce((sum, b) => sum + b.entries.length, 0);
   }
 
-  function render() {
-    let frame = "";
+  function navRight(): string {
+    return `${allRows.length}R × 1C`;
+  }
 
-    if (lastRenderedLines > 0) {
-      frame += `\x1b[${lastRenderedLines}A\r\x1b[J`;
-    }
+  function statLeft(): string {
+    const n = totalCmds();
+    return `${n} ${n === 1 ? "command" : "commands"}`;
+  }
 
-    frame += renderHint() + "\n\x1b[K\n";
+  function buildNavHints(): string[] {
+    const isOnHeader = allRows[cursor]?.kind === "header";
+    const v          = vis();
+    const scrollInfo = allRows.length > v ? chalk.dim(` [${cursor + 1}/${allRows.length}]`) : "";
+    const delLabel   = isOnHeader ? " delete group  " : " delete entry  ";
 
-    const visible = rows.slice(scrollTop, scrollTop + VISIBLE);
+    return [
+      kb("↑↓") + chalk.gray(" navigate  ") + kb("d") + chalk.gray(delLabel) + kb("D") + chalk.gray(" delete all  ") + kb("esc") + chalk.gray(" quit") + scrollInfo,
+      kb("↑↓") + chalk.gray(" navigate  ") + kb("d") + chalk.gray(" delete  ") + kb("D") + chalk.gray(" all  ") + kb("esc") + chalk.gray(" quit") + scrollInfo,
+      kb("↑↓") + chalk.gray(" nav  ")      + kb("d") + chalk.gray(" del  ")    + kb("D") + chalk.gray(" all  ") + kb("esc") + chalk.gray(" quit") + scrollInfo,
+      kb("↑↓") + chalk.gray(" nav  ")      + kb("d") + chalk.gray(" del  ")                                     + kb("esc") + chalk.gray(" quit") + scrollInfo,
+      kb("↑↓") + chalk.gray(" nav  ")                                                                           + kb("esc") + chalk.gray(" quit"),
+    ];
+  }
 
-    for (const row of visible) {
-      const i = rows.indexOf(row);
-      const active = i === cursor;
+  function drawContent() {
+    const cols    = C();
+    const v       = vis();
+    const visible = allRows.slice(scrollTop, scrollTop + v);
+    let out = "";
+
+    for (let i = 0; i < v; i++) {
+      out += at(NAVBAR_ROWS + 1 + i, 1) + clr();
+      const row = visible[i];
+      if (!row) continue;
+
+      const active = (scrollTop + i) === cursor;
 
       if (row.kind === "header") {
-        const b = buckets[row.bucketIdx];
+        const b     = buckets[row.bucketIdx];
         const label = `  ${b.label}  (${b.entries.length} commands)`;
-        frame += active
-          ? chalk.bgYellow.black.bold(label.padEnd(COLS - 1)) + "\x1b[K\n"
-          : chalk.yellow.bold(label) + "\x1b[K\n";
+        const text  = label.slice(0, cols);
+        out += active
+          ? chalk.bgYellow.black.bold(text.padEnd(cols))
+          : chalk.yellow.bold(text);
       } else {
         const { cmd, ts } = row.entry;
-        const time = ts
+        const timeStr = ts
           ? chalk.gray(new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
-          : "";
-        const maxCmd = COLS - 12;
+          : "     ";
+        const maxCmd  = cols - 10;
         const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
-        const padded = ("    " + display).padEnd(COLS - 10);
-        frame += active
-          ? chalk.bgWhite.black.bold(padded) + "  " + time + "\x1b[K\n"
-          : chalk.white(padded) + "  " + time + "\x1b[K\n";
+        const padded  = ("    " + display).padEnd(cols - 7);
+        out += active
+          ? chalk.bgWhite.black.bold(padded) + "  " + timeStr
+          : chalk.white(padded)              + "  " + timeStr;
       }
     }
 
-    if (rows.length > VISIBLE) {
-      const pct = Math.round(((scrollTop + VISIBLE) / rows.length) * 100);
-      const more = rows.length - (scrollTop + VISIBLE);
-      const indicator = more > 0
-        ? chalk.dim(`  ↓ ${more} more`)
-        : chalk.dim("  (end)");
-      frame += indicator + "\x1b[K\n";
-      lastRenderedLines = 2 + visible.length + 1;
-    } else {
-      lastRenderedLines = 2 + visible.length;
-    }
-
-    process.stdout.write(frame);
+    w(out);
+    drawFooter(NAVBAR_ROWS + 1 + v, allRows.length, scrollTop, v, statLeft());
   }
 
-  function clearUI() {
-    if (lastRenderedLines > 0) {
-      process.stdout.write(`\x1b[${lastRenderedLines}A\r\x1b[J`);
-      lastRenderedLines = 0;
-    }
+  function render() {
+    drawNavbar(buildNavHints(), navRight());
+    drawContent();
+  }
+
+  function fullRedraw() {
+    clearScreen();
+    adjustScroll();
+    render();
   }
 
   function cleanup() {
+    process.stdout.removeListener("resize", onResize);
     stdin.removeAllListeners("data");
     if (stdin.isTTY) stdin.setRawMode(false);
-    process.stdout.write("\x1b[?25h");
+    exitAlt();
   }
 
   function exit() {
-    clearUI();
     cleanup();
     const remaining = buckets.flatMap((b) => b.entries);
     setTimeout(() => onDone(remaining), 20);
   }
 
   function deleteAtCursor() {
-    if (rows.length === 0) return;
-    const row = rows[cursor];
+    if (allRows.length === 0) return;
+    const row = allRows[cursor];
     if (row.kind === "header") {
       buckets[row.bucketIdx].entries = [];
     } else {
@@ -202,12 +211,40 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (u: HistoryE
         (e) => e.cmd !== row.entry.cmd
       );
     }
-    rows = buildRows();
-    if (rows.length === 0) return exit();
-    cursor = Math.min(cursor, rows.length - 1);
+    allRows = buildRows();
+    if (allRows.length === 0) return exit();
+    cursor = Math.min(cursor, allRows.length - 1);
     adjustScroll();
     render();
   }
+
+  function showConfirmDeleteAll() {
+    const mid   = Math.floor(R() / 2);
+    const line1 = chalk.red.bold("  Delete all history?") + " " + chalk.gray("This cannot be undone.");
+    const line2 = "  " + chalk.bgRed.white.bold(" y ") + chalk.gray("  yes      ") +
+                  chalk.bgGray.white.bold(" n ") + chalk.gray("  no / esc");
+    let out = "";
+    out += at(mid - 1, 1) + clr() + line1;
+    out += at(mid,     1) + clr() + line2;
+    out += at(mid + 1, 1) + clr();
+    w(out);
+
+    stdin.removeListener("data", onKey);
+    stdin.on("data", function onConfirm(k: string) {
+      if (k === "y" || k === "Y") {
+        stdin.removeListener("data", onConfirm);
+        buckets.forEach((b) => { b.entries = []; });
+        return exit();
+      }
+      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
+        stdin.removeListener("data", onConfirm);
+        fullRedraw();
+        stdin.on("data", onKey);
+      }
+    });
+  }
+
+  function onResize() { fullRedraw(); }
 
   function onKey(raw: string) {
     if (raw === "\u001b[A") {
@@ -215,40 +252,21 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (u: HistoryE
       return;
     }
     if (raw === "\u001b[B") {
-      if (cursor < rows.length - 1) { cursor++; adjustScroll(); render(); }
+      if (cursor < allRows.length - 1) { cursor++; adjustScroll(); render(); }
       return;
     }
-    if (raw === "\u001b") return exit();
+    if (raw === "\u001b" || raw === "\u0003" || raw === "q") return exit();
     if (raw.startsWith("\u001b")) return;
-    if (raw === "\u0003") return exit();
-    if (raw === "D") {
-      const msg = `\n  ${chalk.red.bold("Delete all history?")} ${chalk.gray("This cannot be undone.")}\n` +
-                  `  ${chalk.bgRed.white.bold(" y ")} ${chalk.gray("yes    ")}${chalk.bgGray.white.bold(" n ")} ${chalk.gray("no / esc")}\n`;
-      process.stdout.write(msg);
-      stdin.removeListener("data", onKey);
-      stdin.on("data", function onConfirm(k: string) {
-        process.stdout.write(`\x1b[3A\r\x1b[J`);
-        if (k === "y" || k === "Y") {
-          stdin.removeListener("data", onConfirm);
-          buckets.forEach((b) => { b.entries = []; });
-          return exit();
-        }
-        if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-          stdin.removeListener("data", onConfirm);
-          stdin.on("data", onKey);
-        }
-      });
-      return;
-    }
+    if (raw === "D") return showConfirmDeleteAll();
     if (raw === "d" || raw === "\x7f") return deleteAtCursor();
   }
 
+  process.stdout.on("resize", onResize);
   stdin.setRawMode(true);
   stdin.resume();
   stdin.setEncoding("utf8");
-  process.stdout.write("\x1b[?25l");
   stdin.on("data", onKey);
 
-  lastRenderedLines = 0;
-  render();
+  enterAlt();
+  fullRedraw();
 }

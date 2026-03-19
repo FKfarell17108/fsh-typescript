@@ -24,6 +24,11 @@ let historyEntries: HistoryEntry[] = loadHistoryEntries();
 let savedHistory: string[] = entriesToStrings(historyEntries);
 let tabHandlerActive = false;
 let lastExitCodeForPrompt = 0;
+let inputPaused = false;
+
+export function isInputPaused(): boolean {
+  return inputPaused;
+}
 
 export function getPrompt(): string {
   const cwd = process.cwd();
@@ -44,6 +49,7 @@ export function setLastExitCode(code: number) {
 }
 
 export function pauseInput() {
+  inputPaused = true;
   if (rl) {
     savedHistory = (rl as any).history?.slice() ?? [];
     saveHistoryEntries(historyEntries);
@@ -53,6 +59,7 @@ export function pauseInput() {
 }
 
 export function resumeInput() {
+  inputPaused = false;
   setTimeout(() => {
     createRl();
     prompt();
@@ -66,6 +73,10 @@ export function reloadHistoryInRl(updated: HistoryEntry[]) {
   if (rl) {
     (rl as any).history = savedHistory.slice();
   }
+}
+
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 function setupTabIntercept() {
@@ -116,17 +127,23 @@ function setupTabIntercept() {
   const origRefresh = rlAny._refreshLine?.bind(rl);
   if (origRefresh) {
     rlAny._refreshLine = function () {
-      const line: string = rlAny.line ?? "";
+      const rawLine: string = rlAny.line ?? "";
       const cursor: number = rlAny.cursor ?? 0;
 
-      if (line.length === 0) return origRefresh();
+      if (rawLine.length === 0) return origRefresh();
 
-      const highlighted = highlight(line);
+      const highlighted = highlight(rawLine);
+
+      const savedLine = rlAny.line;
+      const savedCursor = rlAny.cursor;
+
       rlAny.line = highlighted;
       rlAny.cursor = highlighted.length;
+
       origRefresh();
-      rlAny.line = line;
-      rlAny.cursor = cursor;
+
+      rlAny.line = savedLine;
+      rlAny.cursor = savedCursor;
     };
   }
 }
@@ -202,11 +219,13 @@ function prompt() {
     const cleanInput = input.trim();
     if (!cleanInput) return prompt();
 
-    historyEntries = pushEntry(historyEntries, cleanInput);
+    const rawInput = stripAnsi(cleanInput);
+
+    historyEntries = pushEntry(historyEntries, rawInput);
     savedHistory = entriesToStrings(historyEntries);
     saveHistoryEntries(historyEntries);
 
-    const expanded = expandAliases(cleanInput);
+    const expanded = expandAliases(rawInput);
     const statement = parseInput(expanded);
 
     execute(statement, () => {
@@ -223,11 +242,13 @@ function promptWithLine(prefill: string) {
     const cleanInput = input.trim();
     if (!cleanInput) return prompt();
 
-    historyEntries = pushEntry(historyEntries, cleanInput);
+    const rawInput = stripAnsi(cleanInput);
+
+    historyEntries = pushEntry(historyEntries, rawInput);
     savedHistory = entriesToStrings(historyEntries);
     saveHistoryEntries(historyEntries);
 
-    const expanded = expandAliases(cleanInput);
+    const expanded = expandAliases(rawInput);
     const statement = parseInput(expanded);
 
     execute(statement, () => {

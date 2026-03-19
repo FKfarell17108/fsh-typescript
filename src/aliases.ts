@@ -18,10 +18,11 @@ export function getAllAliases(): Map<string, string> {
 
 export function expandAliases(input: string): string {
   const seen = new Set<string>();
-
+  const MAX_DEPTH = 10;
   let result = input;
+  let depth = 0;
 
-  while (true) {
+  while (depth < MAX_DEPTH) {
     const firstWord = result.trimStart().split(/\s+/)[0];
     if (!firstWord || seen.has(firstWord)) break;
 
@@ -29,7 +30,8 @@ export function expandAliases(input: string): string {
     if (!expanded) break;
 
     seen.add(firstWord);
-    result = result.trimStart().replace(firstWord, expanded);
+    result = expanded + result.trimStart().slice(firstWord.length);
+    depth++;
   }
 
   return result;

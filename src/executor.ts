@@ -3,7 +3,7 @@ import * as pty from "node-pty";
 import fs from "fs";
 import { handleBuiltin } from "./builtins";
 import { Statement, Pipeline, Command } from "./parser";
-import { pauseInput, resumeInput } from "./main";
+import { pauseInput, resumeInput, isInputPaused } from "./main";
 
 let lastExitCode = 0;
 
@@ -90,7 +90,7 @@ function runPipeline(commands: Command[], done: () => void) {
     const stdio: StdioOptions = [
       isFirst ? resolveStdin(command) : "pipe",
       isLast ? resolveStdout(command) : "pipe",
-      "inherit",
+      "pipe",
     ];
 
     const child = spawn(command.cmd, command.args, { stdio, env: process.env });
@@ -98,6 +98,10 @@ function runPipeline(commands: Command[], done: () => void) {
     if (!isFirst) {
       const prev = children[index - 1];
       if (prev.stdout) prev.stdout.pipe(child.stdin!);
+    }
+
+    if (isLast && child.stderr) {
+      child.stderr.pipe(process.stderr);
     }
 
     let hadError = false;
@@ -139,6 +143,12 @@ function spawnWithPty(command: Command, done: () => void) {
     } else {
       console.log(`fsh: ${command.cmd}: ${err.message}`);
     }
+    lastExitCode = 1;
+    return done();
+  }
+
+  if (isInputPaused()) {
+    term.kill();
     lastExitCode = 1;
     return done();
   }
