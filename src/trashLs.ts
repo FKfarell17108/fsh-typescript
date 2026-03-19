@@ -5,7 +5,7 @@ import {
   loadMeta, TrashEntry, restoreFromTrash,
   deleteFromTrash, deleteAllFromTrash, TRASH_DIR,
 } from "./trash";
-import { w, at, clr, C, R, NAVBAR_ROWS, FOOTER_ROWS, drawNavbar, drawFooter, kb, enterAlt, exitAlt, clearScreen } from "./tui";
+import { w, at, clr, C, R, NAVBAR_ROWS, FOOTER_ROWS, drawNavbar, drawFooter, kb, enterAlt, exitAlt, clearScreen, visibleLen } from "./tui";
 
 export function interactiveTrash(onExit: () => void) {
   const stdin = process.stdin;
@@ -67,10 +67,12 @@ export function interactiveTrash(onExit: () => void) {
     ];
   }
 
-  function drawTrashContent() {
+  function renderMain() {
     const cols = C();
     const v    = vis();
     let out    = "";
+
+    out += drawNavbarStr(buildNavHints(), navRight());
 
     for (let i = 0; i < v; i++) {
       out += at(NAVBAR_ROWS + 1 + i, 1) + clr();
@@ -86,16 +88,18 @@ export function interactiveTrash(onExit: () => void) {
       const dateStr = chalk.gray(date);
 
       if (active) {
-        const from    = e.originalPath.replace(process.env.HOME ?? "", "~");
-        const dateLen = date.length;
-        const fromMax = cols - dateLen - 4;
-        const nameMax = cols - dateLen - Math.min(from.length + 12, fromMax) - 4;
-        const name    = e.name.length > Math.max(nameMax, 8) ? e.name.slice(0, Math.max(nameMax, 8) - 1) + "…" : e.name;
-        const fromTrunc = from.length > fromMax - 12 ? from.slice(0, fromMax - 13) + "…" : from;
-        const left    = ` ${icon} ${name}`;
-        const right   = date + chalk.dim("  from: " + fromTrunc);
-        const pad     = Math.max(0, cols - visibleLen(left) - visibleLen(right) - 2);
-        out += chalk.bgWhite.black.bold(left) + " ".repeat(pad) + chalk.bgWhite.black(date) + chalk.bgWhite.dim("  from: " + fromTrunc);
+        const from      = e.originalPath.replace(process.env.HOME ?? "", "~");
+        const fromMax   = Math.floor(cols * 0.4);
+        const fromTrunc = from.length > fromMax ? from.slice(0, fromMax - 1) + "…" : from;
+        const nameMax   = cols - date.length - visibleLen("  from: " + fromTrunc) - 4;
+        const name      = e.name.length > Math.max(nameMax, 8) ? e.name.slice(0, Math.max(nameMax, 8) - 1) + "…" : e.name;
+        const left      = ` ${icon} ${name}`;
+        const rightVis  = date + "  from: " + fromTrunc;
+        const pad       = Math.max(0, cols - visibleLen(left) - visibleLen(rightVis) - 2);
+        out += chalk.bgWhite.black.bold(left) +
+               " ".repeat(pad) +
+               chalk.bgWhite.black(date) +
+               chalk.bgWhite.dim("  from: " + fromTrunc);
       } else {
         const maxName = cols - date.length - 4;
         const name    = e.name.length > maxName ? e.name.slice(0, maxName - 1) + "…" : e.name;
@@ -104,19 +108,14 @@ export function interactiveTrash(onExit: () => void) {
       }
     }
 
+    out += drawFooterStr(entries.length, scrollTop, v, statLeft());
     w(out);
-    drawFooter(NAVBAR_ROWS + 1 + v, entries.length, scrollTop, v, statLeft());
-  }
-
-  function render() {
-    drawNavbar(buildNavHints(), navRight());
-    drawTrashContent();
   }
 
   function fullRedraw() {
-    clearScreen();
+    w("\x1b[2J");
     adjustScroll();
-    render();
+    renderMain();
   }
 
   function afterAction() {
@@ -126,26 +125,206 @@ export function interactiveTrash(onExit: () => void) {
     fullRedraw();
   }
 
-  function showConfirmEmptyTrash() {
-    const mid  = Math.floor(R() / 2);
-    let out    = "";
-    out += at(mid - 1, 1) + clr() + chalk.red.bold("  Empty trash?") + " " + chalk.gray("This will permanently delete all items.");
-    out += at(mid,     1) + clr() + "  " + chalk.bgRed.white.bold(" y ") + chalk.gray("  yes      ") + chalk.bgGray.white.bold(" n ") + chalk.gray("  no / esc");
-    out += at(mid + 1, 1) + clr();
-    w(out);
+  function drawNavbarStr(hints: string[], right?: string): string {
+    const cols      = C();
+    const rightStr  = right ? " " + right + " " : "";
+    const rightLen  = visibleLen(rightStr);
+    const available = cols - 2 - rightLen;
+    let chosen      = hints[hints.length - 1];
+    for (const h of hints) {
+      if (visibleLen(h) <= available) { chosen = h; break; }
+    }
+    const leftPart  = padOrTrim(" " + chosen, cols - rightLen);
+    const rightPart = rightLen > 0 ? chalk.bgBlack.dim(rightStr) : "";
+    return at(1, 1) + clr() + chalk.bgBlack.white(leftPart) + rightPart +
+           at(2, 1) + clr() + chalk.dim("─".repeat(cols));
+  }
 
-    stdin.removeListener("data", onKey);
-    stdin.on("data", function onConfirm(k: string) {
+  function drawFooterStr(total: number, st: number, v: number, statL?: string): string {
+    const cols     = C();
+    const more     = total - (st + v);
+    const leftStr  = statL ? "  " + statL : "";
+    const leftLen  = visibleLen(leftStr);
+    let rightStr   = "";
+    if (total > v) rightStr = more > 0 ? `  ↓ ${more} more  ` : "  (end)  ";
+    const rightLen = visibleLen(rightStr);
+    const gap      = Math.max(0, cols - leftLen - rightLen);
+    return at(NAVBAR_ROWS + 1 + v, 1) + clr() +
+           chalk.dim(leftStr) + " ".repeat(gap) + chalk.dim(rightStr);
+  }
+
+  function padOrTrim(str: string, width: number): string {
+    const vlen = visibleLen(str);
+    if (vlen < width) return str + " ".repeat(width - vlen);
+    if (vlen === width) return str;
+    let out = ""; let count = 0; let i = 0;
+    while (i < str.length) {
+      if (str[i] === "\x1b") {
+        const end = str.indexOf("m", i);
+        if (end !== -1) { out += str.slice(i, end + 1); i = end + 1; continue; }
+      }
+      if (count >= width - 1) { out += chalk.reset(""); break; }
+      out += str[i]; count++; i++;
+    }
+    return out + chalk.reset("");
+  }
+
+  function showConfirm(opts: {
+    icon: string;
+    name: string;
+    isDir: boolean;
+    actionLabel: string;
+    actionColor: (s: string) => string;
+    src?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    onResumeResize: () => void;
+    currentResizeHandler: () => void;
+  }) {
+    const {
+      icon, name, isDir, actionLabel, actionColor,
+      src, onConfirm, onCancel, onResumeResize, currentResizeHandler,
+    } = opts;
+
+    function buildConfirmNavHints(): string[] {
+      return [
+        kb("y") + chalk.gray(" confirm  ") + kb("n") + chalk.gray(" / ") + kb("esc") + chalk.gray(" cancel"),
+        kb("y") + chalk.gray(" yes  ") + kb("esc") + chalk.gray(" no"),
+      ];
+    }
+
+    function drawConfirmScreen() {
+      const cols  = C();
+      const avail = R() - NAVBAR_ROWS;
+      let out     = drawNavbarStr(buildConfirmNavHints());
+      let lineNum = 0;
+
+      function line(content: string) {
+        if (lineNum >= avail) return;
+        out += at(NAVBAR_ROWS + 1 + lineNum, 1) + clr() + content;
+        lineNum++;
+      }
+
+      line(chalk.bold(icon + "  " + name));
+      line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
+
+      if (src) {
+        if (isDir) {
+          try {
+            const children = fs.readdirSync(src, { withFileTypes: true });
+            if (children.length === 0) {
+              line(chalk.gray("  (empty directory)"));
+            } else {
+              for (const c of children.slice(0, avail - 6)) {
+                line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name));
+              }
+              if (children.length > avail - 6) {
+                line(chalk.gray(`  ... and ${children.length - (avail - 6)} more`));
+              }
+            }
+          } catch {
+            line(chalk.red("  cannot read directory"));
+          }
+        } else {
+          try {
+            const fileLines = fs.readFileSync(src, "utf8").split("\n");
+            for (const fl of fileLines.slice(0, avail - 6)) {
+              const d = fl.length > cols - 4 ? fl.slice(0, cols - 5) + "…" : fl;
+              line(chalk.white("  " + d));
+            }
+            if (fileLines.length > avail - 6) {
+              line(chalk.gray(`  ... ${fileLines.length - (avail - 6)} more lines`));
+            }
+          } catch {
+            line(chalk.gray("  (binary file)"));
+          }
+        }
+      }
+
+      for (let i = lineNum; i < avail - 2; i++) {
+        out += at(NAVBAR_ROWS + 1 + i, 1) + clr();
+        lineNum++;
+      }
+
+      out += at(R() - 1, 1) + clr() + chalk.dim("─".repeat(Math.min(cols - 2, 60)));
+      out += at(R(), 1) + clr() +
+        "  " + actionColor(actionLabel) + ": " + chalk.white(name) +
+        (isDir ? chalk.gray(" and all its contents") : "") + "?";
+
+      w(out);
+    }
+
+    function onConfirmResize() { w("\x1b[2J"); drawConfirmScreen(); }
+
+    process.stdout.removeListener("resize", currentResizeHandler);
+    process.stdout.on("resize", onConfirmResize);
+
+    function onConfirmKey(k: string) {
       if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirm);
-        deleteAllFromTrash();
-        return exit();
+        stdin.removeListener("data", onConfirmKey);
+        process.stdout.removeListener("resize", onConfirmResize);
+        process.stdout.on("resize", onResumeResize);
+        onConfirm();
+        return;
       }
       if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onConfirm);
+        stdin.removeListener("data", onConfirmKey);
+        process.stdout.removeListener("resize", onConfirmResize);
+        process.stdout.on("resize", onResumeResize);
+        onCancel();
+      }
+    }
+
+    stdin.on("data", onConfirmKey);
+    w("\x1b[2J");
+    drawConfirmScreen();
+  }
+
+  function showConfirmDeleteEntry(entry: TrashEntry) {
+    const src = path.join(TRASH_DIR, entry.id);
+    stdin.removeListener("data", onKey);
+
+    showConfirm({
+      icon:     entry.isDir ? "  dir" : " file",
+      name:     entry.name,
+      isDir:    entry.isDir,
+      actionLabel: "Permanently delete",
+      actionColor: chalk.red.bold,
+      src,
+      onConfirm: () => {
+        deleteFromTrash(entry);
+        afterAction();
+        stdin.on("data", onKey);
+      },
+      onCancel: () => {
         fullRedraw();
         stdin.on("data", onKey);
-      }
+      },
+      onResumeResize: onResize,
+      currentResizeHandler: onResize,
+    });
+  }
+
+  function showConfirmEmptyTrash() {
+    stdin.removeListener("data", onKey);
+
+    showConfirm({
+      icon:        "  trash",
+      name:        "all items",
+      isDir:       true,
+      actionLabel: "Empty trash — delete all",
+      actionColor: chalk.red.bold,
+      src:         undefined,
+      onConfirm: () => {
+        deleteAllFromTrash();
+        exit();
+      },
+      onCancel: () => {
+        fullRedraw();
+        stdin.on("data", onKey);
+      },
+      onResumeResize: onResize,
+      currentResizeHandler: onResize,
     });
   }
 
@@ -163,10 +342,10 @@ export function interactiveTrash(onExit: () => void) {
       ];
     }
 
-    function drawPreviewContent() {
+    function renderPreview() {
       const cols  = C();
       const v     = Math.max(1, R() - NAVBAR_ROWS);
-      let out     = "";
+      let out     = drawNavbarStr(buildPreviewNavHints(), navRight());
       let lineNum = 0;
 
       function line(content: string) {
@@ -207,23 +386,22 @@ export function interactiveTrash(onExit: () => void) {
       w(out);
     }
 
-    function renderPreview() {
-      drawNavbar(buildPreviewNavHints(), navRight());
-      drawPreviewContent();
-    }
-
-    function onPreviewResize() { clearScreen(); renderPreview(); }
+    function onPreviewResize() { w("\x1b[2J"); renderPreview(); }
 
     process.stdout.removeListener("resize", onResize);
     process.stdout.on("resize", onPreviewResize);
 
+    function backToList() {
+      stdin.removeListener("data", onPreviewKey);
+      process.stdout.removeListener("resize", onPreviewResize);
+      process.stdout.on("resize", onResize);
+      fullRedraw();
+      stdin.on("data", onKey);
+    }
+
     function onPreviewKey(k: string) {
       if (k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onPreviewKey);
-        process.stdout.removeListener("resize", onPreviewResize);
-        process.stdout.on("resize", onResize);
-        fullRedraw();
-        stdin.on("data", onKey);
+        backToList();
         return;
       }
       if (k === "r") {
@@ -237,9 +415,27 @@ export function interactiveTrash(onExit: () => void) {
       if (k === "x") {
         stdin.removeListener("data", onPreviewKey);
         process.stdout.removeListener("resize", onPreviewResize);
-        process.stdout.on("resize", onResize);
-        deleteFromTrash(entry);
-        afterAction();
+
+        showConfirm({
+          icon:        entry.isDir ? "  dir" : " file",
+          name:        entry.name,
+          isDir:       entry.isDir,
+          actionLabel: "Permanently delete",
+          actionColor: chalk.red.bold,
+          src,
+          onConfirm: () => {
+            deleteFromTrash(entry);
+            afterAction();
+          },
+          onCancel: () => {
+            process.stdout.on("resize", onPreviewResize);
+            w("\x1b[2J");
+            renderPreview();
+            stdin.on("data", onPreviewKey);
+          },
+          onResumeResize: onPreviewResize,
+          currentResizeHandler: onPreviewResize,
+        });
         return;
       }
       if (k === "o" && entry.isDir) {
@@ -256,7 +452,7 @@ export function interactiveTrash(onExit: () => void) {
 
     stdin.removeListener("data", onKey);
     stdin.on("data", onPreviewKey);
-    clearScreen();
+    w("\x1b[2J");
     renderPreview();
   }
 
@@ -265,17 +461,17 @@ export function interactiveTrash(onExit: () => void) {
   function onKey(k: string) {
     if (k === "\u001b" || k === "\u0003") return exit();
     if (k === "\u001b[A") {
-      if (sel > 0) { sel--; adjustScroll(); render(); }
+      if (sel > 0) { sel--; adjustScroll(); renderMain(); }
       return;
     }
     if (k === "\u001b[B") {
-      if (sel < entries.length - 1) { sel++; adjustScroll(); render(); }
+      if (sel < entries.length - 1) { sel++; adjustScroll(); renderMain(); }
       return;
     }
     if (k.startsWith("\u001b")) return;
     if (k === "\r") return showPreview(entries[sel]);
     if (k === "r") { restoreFromTrash(entries[sel]); afterAction(); return; }
-    if (k === "x") { deleteFromTrash(entries[sel]); afterAction(); return; }
+    if (k === "x") { showConfirmDeleteEntry(entries[sel]); return; }
     if (k === "D") return showConfirmEmptyTrash();
   }
 
@@ -287,10 +483,6 @@ export function interactiveTrash(onExit: () => void) {
 
   enterAlt();
   fullRedraw();
-}
-
-function visibleLen(str: string): number {
-  return str.replace(/\x1b\[[0-9;]*[\x40-\x7e]/g, "").length;
 }
 
 function browseDir(
@@ -339,10 +531,10 @@ function browseDir(
     ];
   }
 
-  function drawBrowseContent() {
+  function render() {
     const cols = C();
     const v    = vis();
-    let out    = "";
+    let out    = drawNavbarStr(buildNavHints(), navRight());
 
     for (let i = 0; i < v; i++) {
       out += at(NAVBAR_ROWS + 1 + i, 1) + clr();
@@ -357,12 +549,55 @@ function browseDir(
     }
 
     if (entries.length === 0) out += at(NAVBAR_ROWS + 1, 1) + chalk.gray("  (empty)");
+    out += drawFooterStr(entries.length, scrollTop, v, statLeft());
     w(out);
-    drawFooter(NAVBAR_ROWS + 1 + v, entries.length, scrollTop, v, statLeft());
   }
 
-  function render() { drawNavbar(buildNavHints(), navRight()); drawBrowseContent(); }
-  function onBrowseResize() { clearScreen(); render(); }
+  function drawNavbarStr(hints: string[], right?: string): string {
+    const cols      = C();
+    const rightStr  = right ? " " + right + " " : "";
+    const rightLen  = visibleLen(rightStr);
+    const available = cols - 2 - rightLen;
+    let chosen      = hints[hints.length - 1];
+    for (const h of hints) {
+      if (visibleLen(h) <= available) { chosen = h; break; }
+    }
+    const leftPart  = padOrTrim(" " + chosen, cols - rightLen);
+    const rightPart = rightLen > 0 ? chalk.bgBlack.dim(rightStr) : "";
+    return at(1, 1) + clr() + chalk.bgBlack.white(leftPart) + rightPart +
+           at(2, 1) + clr() + chalk.dim("─".repeat(cols));
+  }
+
+  function drawFooterStr(total: number, st: number, v: number, statL?: string): string {
+    const cols     = C();
+    const more     = total - (st + v);
+    const leftStr  = statL ? "  " + statL : "";
+    const leftLen  = visibleLen(leftStr);
+    let rightStr   = "";
+    if (total > v) rightStr = more > 0 ? `  ↓ ${more} more  ` : "  (end)  ";
+    const rightLen = visibleLen(rightStr);
+    const gap      = Math.max(0, cols - leftLen - rightLen);
+    return at(NAVBAR_ROWS + 1 + v, 1) + clr() +
+           chalk.dim(leftStr) + " ".repeat(gap) + chalk.dim(rightStr);
+  }
+
+  function padOrTrim(str: string, width: number): string {
+    const vlen = visibleLen(str);
+    if (vlen < width) return str + " ".repeat(width - vlen);
+    if (vlen === width) return str;
+    let out = ""; let count = 0; let i = 0;
+    while (i < str.length) {
+      if (str[i] === "\x1b") {
+        const end = str.indexOf("m", i);
+        if (end !== -1) { out += str.slice(i, end + 1); i = end + 1; continue; }
+      }
+      if (count >= width - 1) { out += chalk.reset(""); break; }
+      out += str[i]; count++; i++;
+    }
+    return out + chalk.reset("");
+  }
+
+  function onBrowseResize() { w("\x1b[2J"); render(); }
 
   process.stdout.on("resize", onBrowseResize);
 
@@ -385,7 +620,7 @@ function browseDir(
         process.stdout.removeListener("resize", onBrowseResize);
         browseDir(fullPath, label + "/" + e.name, stdin, () => {
           process.stdout.on("resize", onBrowseResize);
-          clearScreen();
+          w("\x1b[2J");
           render();
           stdin.on("data", onKey);
         });
@@ -394,7 +629,7 @@ function browseDir(
         process.stdout.removeListener("resize", onBrowseResize);
         browseFile(fullPath, e.name, stdin, () => {
           process.stdout.on("resize", onBrowseResize);
-          clearScreen();
+          w("\x1b[2J");
           render();
           stdin.on("data", onKey);
         });
@@ -403,7 +638,7 @@ function browseDir(
   }
 
   stdin.on("data", onKey);
-  clearScreen();
+  w("\x1b[2J");
   render();
 }
 
@@ -420,10 +655,38 @@ function browseFile(
     ];
   }
 
-  function drawFileContent() {
+  function drawNavbarStr(hints: string[]): string {
+    const cols      = C();
+    const available = cols - 2;
+    let chosen      = hints[hints.length - 1];
+    for (const h of hints) {
+      if (visibleLen(h) <= available) { chosen = h; break; }
+    }
+    const leftPart = padOrTrim(" " + chosen, cols);
+    return at(1, 1) + clr() + chalk.bgBlack.white(leftPart) +
+           at(2, 1) + clr() + chalk.dim("─".repeat(cols));
+  }
+
+  function padOrTrim(str: string, width: number): string {
+    const vlen = visibleLen(str);
+    if (vlen < width) return str + " ".repeat(width - vlen);
+    if (vlen === width) return str;
+    let out = ""; let count = 0; let i = 0;
+    while (i < str.length) {
+      if (str[i] === "\x1b") {
+        const end = str.indexOf("m", i);
+        if (end !== -1) { out += str.slice(i, end + 1); i = end + 1; continue; }
+      }
+      if (count >= width - 1) { out += chalk.reset(""); break; }
+      out += str[i]; count++; i++;
+    }
+    return out + chalk.reset("");
+  }
+
+  function render() {
     const cols  = C();
     const v     = Math.max(1, R() - NAVBAR_ROWS);
-    let out     = "";
+    let out     = drawNavbarStr(buildNavHints());
     let lineNum = 0;
 
     function line(content: string) {
@@ -445,8 +708,7 @@ function browseFile(
     w(out);
   }
 
-  function render() { drawNavbar(buildNavHints()); drawFileContent(); }
-  function onFileResize() { clearScreen(); render(); }
+  function onFileResize() { w("\x1b[2J"); render(); }
 
   process.stdout.on("resize", onFileResize);
 
@@ -459,6 +721,6 @@ function browseFile(
   }
 
   stdin.on("data", onKey);
-  clearScreen();
+  w("\x1b[2J");
   render();
 }

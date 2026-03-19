@@ -4,15 +4,17 @@ import path from "path";
 import { getAllAliases } from "./aliases";
 
 const BUILTINS = new Set([
-  "exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias",
-  "clear", "history",
+  "exit", "echo", "type", "pwd", "cd", "ls", "dir", "alias", "unalias",
+  "clear", "history", "trash", "fshrc", "neofetch",
 ]);
 
-let execCache = new Set<string>();
+let execCache    = new Set<string>();
 let execCacheTime = 0;
-const CACHE_TTL = 30_000;
+let refreshPending = false;
+const CACHE_TTL  = 5_000;
 
 function refreshExecutables(): void {
+  refreshPending = false;
   const set = new Set<string>();
   for (const dir of (process.env.PATH ?? "").split(":")) {
     try {
@@ -21,14 +23,15 @@ function refreshExecutables(): void {
       }
     } catch {}
   }
-  execCache = set;
+  execCache     = set;
   execCacheTime = Date.now();
 }
 
 refreshExecutables();
 
 function getExecutables(): Set<string> {
-  if (Date.now() - execCacheTime > CACHE_TTL) {
+  if (!refreshPending && Date.now() - execCacheTime > CACHE_TTL) {
+    refreshPending = true;
     setImmediate(refreshExecutables);
   }
   return execCache;
@@ -45,16 +48,16 @@ function commandExists(cmd: string): boolean {
 }
 
 type TokenType =
-  | "command"       
-  | "arg"           
-  | "flag"          
-  | "operator"     
-  | "redirect"    
-  | "string_d"     
-  | "string_s"    
-  | "variable"     
-  | "path"     
-  | "incomplete_s"
+  | "command"
+  | "arg"
+  | "flag"
+  | "operator"
+  | "redirect"
+  | "string_d"
+  | "string_s"
+  | "variable"
+  | "path"
+  | "incomplete_s";
 
 type Token = { type: TokenType; value: string };
 
@@ -184,7 +187,7 @@ export function highlight(input: string): string {
         out += chalk.cyan(tok.value);
         break;
       case "string_d":
-        out += chalk.hex("#E5A050")(tok.value); 
+        out += chalk.hex("#E5A050")(tok.value);
         break;
       case "string_s":
         out += chalk.hex("#E5A050")(tok.value);

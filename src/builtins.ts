@@ -3,13 +3,17 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { interactiveLs, pendingOpen, clearPendingOpen } from "./interactiveLs";
+import { interactiveDir } from "./interactiveDir";
 import { pauseInput, resumeInput, reloadHistoryInRl } from "./main";
 import { interactiveTrash } from "./trashLs";
 import { showHistoryManager, loadHistoryEntries } from "./historyManager";
 import { setAlias, removeAlias, getAllAliases } from "./aliases";
 import { loadFshrc, generateDefaultFshrc } from "./fshrc";
 
-const builtins = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias", "clear", "history", "fshrc", "trash", "neofetch"];
+const builtins = [
+  "exit", "echo", "type", "pwd", "cd", "ls", "dir",
+  "alias", "unalias", "clear", "history", "fshrc", "trash", "neofetch",
+];
 
 export function handleBuiltin(
   cmd: string,
@@ -90,6 +94,11 @@ export function handleBuiltin(
       });
       return true;
 
+    case "dir":
+      pauseInput();
+      interactiveDir(() => resumeInput());
+      return true;
+
     case "alias":
       handleAlias(args);
       done();
@@ -129,7 +138,7 @@ function handleAlias(args: string[]) {
       }
     } else {
       const name = arg.slice(0, eq).trim();
-      let value = arg.slice(eq + 1).trim();
+      let value  = arg.slice(eq + 1).trim();
       if (
         (value.startsWith("'") && value.endsWith("'")) ||
         (value.startsWith('"') && value.endsWith('"'))
@@ -202,7 +211,7 @@ function handleType(args: string[]) {
 
 function handleFshrc(args: string[]) {
   const FSHRC = path.join(process.env.HOME ?? "~", ".fshrc");
-  const sub = args[0];
+  const sub   = args[0];
 
   if (sub === "init") {
     if (fs.existsSync(FSHRC)) {

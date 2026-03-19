@@ -2,9 +2,12 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { getAllAliases } from "./aliases";
-import { w, at, clr, C, R, NAVBAR_ROWS, FOOTER_ROWS, drawNavbar, drawFooter, kb, enterAlt, exitAlt, clearScreen } from "./tui";
+import { w, at, clr, C, R, NAVBAR_ROWS, FOOTER_ROWS, drawNavbar, drawFooter, kb, enterAlt, exitAlt, clearScreen, visibleLen } from "./tui";
 
-const BUILTINS = ["exit", "echo", "type", "pwd", "cd", "ls", "alias", "unalias"];
+const BUILTINS = [
+  "exit", "echo", "type", "pwd", "cd", "ls", "dir", "alias", "unalias",
+  "clear", "history", "trash", "fshrc", "neofetch",
+];
 
 export function getCandidates(line: string): { candidates: string[]; partial: string } {
   const tokens      = tokenizeLine(line);
@@ -100,7 +103,8 @@ export function commonPrefix(strs: string[]): string {
 export function showPicker(
   candidates: string[],
   onSelect: (chosen: string) => void,
-  onCancel: () => void
+  onCancel: () => void,
+  onHistory?: () => void
 ) {
   if (candidates.length === 0) return onCancel();
 
@@ -151,21 +155,71 @@ export function showPicker(
     const tr         = totalRows();
     const v          = vis();
     const scrollInfo = tr > v ? chalk.dim(` [row ${Math.floor(selIdx / perRow()) + 1}/${tr}]`) : "";
+    const histHint   = onHistory ? kb("h") + chalk.gray(" history  ") : "";
 
     return [
-      kb("↑↓←→") + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + kb("esc") + chalk.gray(" cancel") + scrollInfo,
-      kb("↑↓←→") + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + kb("esc") + chalk.gray(" cancel") + scrollInfo,
-      kb("↑↓")   + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + kb("esc") + chalk.gray(" cancel") + scrollInfo,
-      kb("↑↓")   + chalk.gray(" move  ")               +                           kb("esc") + chalk.gray(" cancel") + scrollInfo,
+      kb("↑↓←→") + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + histHint + kb("esc") + chalk.gray(" cancel") + scrollInfo,
+      kb("↑↓←→") + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + histHint + kb("esc") + chalk.gray(" cancel") + scrollInfo,
+      kb("↑↓")   + chalk.gray(" move  ") + kb("enter") + chalk.gray(" select  ") + histHint + kb("esc") + chalk.gray(" cancel") + scrollInfo,
+      kb("↑↓")   + chalk.gray(" move  ")               +                           histHint + kb("esc") + chalk.gray(" cancel") + scrollInfo,
       kb("esc")  + chalk.gray(" cancel"),
     ];
   }
 
-  function drawContent() {
-    const pr   = perRow();
-    const cw   = colWidth();
-    const v    = vis();
-    let out    = "";
+  function buildNavbarStr(): string {
+    const cols      = C();
+    const rightStr  = " " + navRight() + " ";
+    const rightLen  = visibleLen(rightStr);
+    const available = cols - 2 - rightLen;
+
+    const hints  = buildNavHints();
+    let chosen   = hints[hints.length - 1];
+    for (const h of hints) {
+      if (visibleLen(h) <= available) { chosen = h; break; }
+    }
+
+    const leftPart  = padOrTrimLocal(" " + chosen, cols - rightLen);
+    const rightPart = chalk.bgBlack.dim(rightStr);
+    return at(1, 1) + clr() + chalk.bgBlack.white(leftPart) + rightPart +
+           at(2, 1) + clr() + chalk.dim("─".repeat(cols));
+  }
+
+  function padOrTrimLocal(str: string, width: number): string {
+    const vlen = visibleLen(str);
+    if (vlen < width) return str + " ".repeat(width - vlen);
+    if (vlen === width) return str;
+    let out = ""; let count = 0; let i = 0;
+    while (i < str.length) {
+      if (str[i] === "\x1b") {
+        const end = str.indexOf("m", i);
+        if (end !== -1) { out += str.slice(i, end + 1); i = end + 1; continue; }
+      }
+      if (count >= width - 1) { out += chalk.reset(""); break; }
+      out += str[i]; count++; i++;
+    }
+    return out + chalk.reset("");
+  }
+
+  function buildFooterStr(): string {
+    const cols     = C();
+    const v        = vis();
+    const tr       = totalRows();
+    const more     = tr - (scrollTop + v);
+    const leftStr  = "  " + statLeft();
+    const leftLen  = visibleLen(leftStr);
+    let rightStr   = "";
+    if (tr > v) rightStr = more > 0 ? `  ↓ ${more} more  ` : "  (end)  ";
+    const rightLen = visibleLen(rightStr);
+    const gap      = Math.max(0, cols - leftLen - rightLen);
+    return at(NAVBAR_ROWS + 1 + v, 1) + clr() +
+           chalk.dim(leftStr) + " ".repeat(gap) + chalk.dim(rightStr);
+  }
+
+  function render() {
+    const pr  = perRow();
+    const cw  = colWidth();
+    const v   = vis();
+    let out   = buildNavbarStr();
 
     for (let row = 0; row < v; row++) {
       out += at(NAVBAR_ROWS + 1 + row, 1) + clr();
@@ -190,18 +244,14 @@ export function showPicker(
       out += line;
     }
 
+    out += buildFooterStr();
     w(out);
-    drawFooter(NAVBAR_ROWS + 1 + v, totalRows(), scrollTop, v, statLeft());
-  }
-
-  function render() {
-    drawNavbar(buildNavHints(), navRight());
-    drawContent();
   }
 
   function fullRedraw() {
-    clearScreen();
+    let out = "\x1b[2J";
     adjustScroll();
+    w(out);
     render();
   }
 
@@ -231,6 +281,7 @@ export function showPicker(
     const pr = perRow();
     if (key === "\u0003" || key === "\u001b" || key === "\t") return exit();
     if (key === "\r") return exit(candidates[selIdx]);
+    if (key === "h" && onHistory) { cleanup(); setTimeout(onHistory, 20); return; }
 
     let idx = selIdx;
     if (key === "\u001b[A") idx -= pr;
@@ -241,7 +292,11 @@ export function showPicker(
     if (key === "\u001b[F") idx = candidates.length - 1;
 
     idx = Math.max(0, Math.min(candidates.length - 1, idx));
-    if (idx !== selIdx) { selIdx = idx; adjustScroll(); drawContent(); }
+    if (idx !== selIdx) {
+      selIdx = idx;
+      adjustScroll();
+      render();
+    }
   });
 
   enterAlt();
