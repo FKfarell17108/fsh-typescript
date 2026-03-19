@@ -243,5 +243,6 @@ neofetch off    # disable
 
 ## © 2026 Farell Kurniawan
 
-This project is proprietary software. All rights reserved.
-Unauthorized use, copying, or distribution is strictly prohibited.
+This project is proprietary software under the FK Universe License.
+All rights reserved. Unauthorized use, copying, or distribution is strictly prohibited.
+This repository is for viewing purposes only.
