@@ -6,11 +6,17 @@ export const clr = () => `\x1b[2K`;
 export const C   = () => process.stdout.columns || 80;
 export const R   = () => process.stdout.rows    || 24;
 
-export const FOOTER_ROWS = 1;
-export const NAVBAR_ROWS = 2;
+export const NAVBAR_ROWS = 3;
+export const FOOTER_ROWS = 0;
+export function getNR(): number { return 0; }
 
-let _navbarRows = 2;
-export function getNR(): number { return _navbarRows; }
+const SINGLE_ROW_THRESHOLD = 7;
+
+export function navbarRows(itemCount: number): number {
+  return itemCount <= SINGLE_ROW_THRESHOLD ? 2 : 3;
+}
+
+export type NavItem = { key: string; label: string; };
 
 export function visibleLen(str: string): number {
   return str.replace(/\x1b\[[0-9;]*[\x40-\x7e]/g, "").length;
@@ -32,117 +38,63 @@ export function padOrTrim(str: string, width: number): string {
   return out + chalk.reset("");
 }
 
-function splitHintTokens(hint: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let i = 0;
-
-  while (i < hint.length) {
-    const rest = hint.slice(i);
-    const match = rest.match(/^(\x1b\[[0-9;]*m)/);
-    if (match) {
-      current += match[0];
-      i += match[0].length;
-      continue;
-    }
-    const splitMatch = rest.match(/^(  +)(\x1b\[)/);
-    if (splitMatch && current.length > 0 && visibleLen(current) > 4) {
-      tokens.push(current);
-      current = "";
-      i += splitMatch[1].length;
-      continue;
-    }
-    current += hint[i];
-    i++;
+function renderNavRow(items: NavItem[], cols: number): string {
+  if (items.length === 0) return chalk.bgBlack(" ".repeat(cols));
+  const colW = Math.floor(cols / items.length);
+  let out = "";
+  for (let i = 0; i < items.length; i++) {
+    const isLast   = i === items.length - 1;
+    const width    = isLast ? cols - colW * (items.length - 1) : colW;
+    const keyBlock = ` ${items[i].key} `;
+    const labAvail = Math.max(1, width - keyBlock.length - 1);
+    const label    = items[i].label.slice(0, labAvail);
+    const pad      = Math.max(0, labAvail - label.length);
+    out += chalk.bgBlack(chalk.bgWhite.black.bold(keyBlock) + chalk.white(` ${label}`) + " ".repeat(pad));
   }
-  if (current) tokens.push(current);
-  return tokens.filter(t => visibleLen(t.trim()) > 0);
+  return out;
 }
 
-export function drawNavbar(hints: string[], right?: string): number {
-  const cols     = C();
-  const rightStr = right ? " " + right + " " : "";
-  const rightLen = visibleLen(rightStr);
-  const avail    = cols - 2 - rightLen;
-
-  let chosen: string | null = null;
-  for (const h of hints) {
-    if (visibleLen(h) <= avail) { chosen = h; break; }
-  }
-
+export function drawNavbar(items: NavItem[]): void {
+  const cols   = C();
+  const single = items.length <= SINGLE_ROW_THRESHOLD;
   let out = "";
-
-  if (chosen !== null) {
-    _navbarRows = 2;
-    const row1 = padOrTrim(" " + chosen, cols - rightLen) +
-                 (rightLen > 0 ? chalk.bgBlack.dim(rightStr) : "");
-    out  = at(1, 1) + clr() + chalk.bgBlack.white(row1);
+  if (single) {
+    out += at(1, 1) + clr() + renderNavRow(items, cols);
     out += at(2, 1) + clr() + chalk.dim("─".repeat(cols));
   } else {
-    _navbarRows = 3;
-    const fullHint = hints[0];
-    const tokens   = splitHintTokens(fullHint);
-
-    const totalLen = visibleLen(fullHint);
-    const target   = Math.floor(totalLen / 2);
-
-    let accum = 0;
-    let splitAt = Math.ceil(tokens.length / 2);
-    for (let i = 0; i < tokens.length; i++) {
-      accum += visibleLen(tokens[i]);
-      if (accum >= target) { splitAt = i + 1; break; }
-    }
-
-    const line1Tokens = tokens.slice(0, splitAt);
-    const line2Tokens = tokens.slice(splitAt);
-
-    const line1Content = line1Tokens.join("  ");
-    const line2Content = line2Tokens.join("  ");
-
-    const row1 = padOrTrim(" " + line1Content, cols - rightLen) +
-                 (rightLen > 0 ? chalk.bgBlack.dim(rightStr) : "");
-    const row2 = padOrTrim(" " + line2Content, cols);
-
-    out  = at(1, 1) + clr() + chalk.bgBlack.white(row1);
-    out += at(2, 1) + clr() + chalk.bgBlack.white(row2);
+    const half = Math.ceil(items.length / 2);
+    out += at(1, 1) + clr() + renderNavRow(items.slice(0, half), cols);
+    out += at(2, 1) + clr() + renderNavRow(items.slice(half), cols);
     out += at(3, 1) + clr() + chalk.dim("─".repeat(cols));
   }
-
   w(out);
-  return _navbarRows;
+}
+
+export function drawBottomBar(left: string, right: string): void {
+  const cols = C();
+  const row  = R();
+  const ls   = left  ? "  " + left  : "";
+  const rs   = right ? right + "  " : "";
+  const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
+  w(at(row, 1) + clr() + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
 }
 
 export function drawFooter(
-  footerRow: number,
+  _footerRow: number,
   total: number,
   scrollTop: number,
   vis: number,
   statLeft?: string
-) {
-  const cols    = C();
-  const more    = total - (scrollTop + vis);
-  const leftStr = statLeft ? "  " + statLeft : "";
-  let rightStr  = "";
-  if (total > vis) {
-    rightStr = more > 0 ? `  ↓ ${more} more  ` : "  (end)  ";
-  }
-  const gap = Math.max(0, cols - visibleLen(leftStr) - visibleLen(rightStr));
-  w(at(footerRow, 1) + clr() + chalk.dim(leftStr) + " ".repeat(gap) + chalk.dim(rightStr));
+): void {
+  const more = total - (scrollTop + vis);
+  const rs   = total > vis ? (more > 0 ? `↓ ${more} more` : "end") : "";
+  drawBottomBar(statLeft ?? "", rs);
 }
 
 export function kb(s: string): string {
   return chalk.bgGray.white.bold(` ${s} `);
 }
 
-export function enterAlt() {
-  w("\x1b[?1049h\x1b[?25l");
-}
-
-export function exitAlt() {
-  _navbarRows = 2;
-  w("\x1b[?25h\x1b[?1049l\x1b[0m");
-}
-
-export function clearScreen() {
-  w("\x1b[2J");
-}
+export function enterAlt(): void    { w("\x1b[?1049h\x1b[?25l"); }
+export function exitAlt(): void     { w("\x1b[?25h\x1b[?1049l\x1b[0m"); }
+export function clearScreen(): void { w("\x1b[2J"); }
