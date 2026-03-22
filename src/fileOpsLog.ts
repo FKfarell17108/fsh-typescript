@@ -46,12 +46,8 @@ function homify(p: string): string {
 
 function canUndo(op: FileOp): boolean {
   if (op.status !== "done") return false;
-  if (op.kind === "copy") {
-    return fs.existsSync(op.destPath);
-  }
-  if (op.kind === "move" || op.kind === "cut") {
-    return fs.existsSync(op.destPath) && !fs.existsSync(op.srcPath);
-  }
+  if (op.kind === "copy") return fs.existsSync(op.destPath);
+  if (op.kind === "move" || op.kind === "cut") return fs.existsSync(op.destPath) && !fs.existsSync(op.srcPath);
   if (op.kind === "rename") {
     const undoDest = path.join(path.dirname(op.destPath), op.srcName);
     return fs.existsSync(op.destPath) && !fs.existsSync(undoDest);
@@ -61,18 +57,14 @@ function canUndo(op: FileOp): boolean {
 
 function performUndo(op: FileOp): string | null {
   try {
-    if (op.kind === "copy") {
-      fs.rmSync(op.destPath, { recursive: true, force: true });
-      return null;
-    }
+    if (op.kind === "copy") { fs.rmSync(op.destPath, { recursive: true, force: true }); return null; }
     if (op.kind === "move" || op.kind === "cut") {
       fs.mkdirSync(path.dirname(op.srcPath), { recursive: true });
       fs.renameSync(op.destPath, op.srcPath);
       return null;
     }
     if (op.kind === "rename") {
-      const dir = path.dirname(op.destPath);
-      const undoDest = path.join(dir, op.srcName);
+      const undoDest = path.join(path.dirname(op.destPath), op.srcName);
       fs.renameSync(op.destPath, undoDest);
       return null;
     }
@@ -80,15 +72,12 @@ function performUndo(op: FileOp): string | null {
   } catch (e: any) {
     try {
       if (op.kind === "move" || op.kind === "cut") {
-        const srcDir = path.dirname(op.srcPath);
-        fs.mkdirSync(srcDir, { recursive: true });
+        fs.mkdirSync(path.dirname(op.srcPath), { recursive: true });
         copyRecursive(op.destPath, op.srcPath);
         fs.rmSync(op.destPath, { recursive: true, force: true });
         return null;
       }
-    } catch (e2: any) {
-      return e2.message;
-    }
+    } catch (e2: any) { return e2.message; }
     return e.message;
   }
 }
@@ -97,9 +86,7 @@ function copyRecursive(src: string, dest: string): void {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     fs.mkdirSync(dest, { recursive: true });
-    for (const child of fs.readdirSync(src)) {
-      copyRecursive(path.join(src, child), path.join(dest, child));
-    }
+    for (const child of fs.readdirSync(src)) copyRecursive(path.join(src, child), path.join(dest, child));
   } else {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(src, dest);
@@ -110,8 +97,7 @@ function removeOpFromLog(id: string): void {
   const LOG_FILE = path.join(require("os").homedir(), ".fsh_fileops.json");
   try {
     const raw: FileOp[] = JSON.parse(fs.readFileSync(LOG_FILE, "utf8"));
-    const updated = raw.filter(o => o.id !== id);
-    fs.writeFileSync(LOG_FILE, JSON.stringify(updated, null, 2), "utf8");
+    fs.writeFileSync(LOG_FILE, JSON.stringify(raw.filter(o => o.id !== id), null, 2), "utf8");
   } catch {}
 }
 
@@ -119,8 +105,7 @@ function removeOpsFromLog(ids: Set<string>): void {
   const LOG_FILE = path.join(require("os").homedir(), ".fsh_fileops.json");
   try {
     const raw: FileOp[] = JSON.parse(fs.readFileSync(LOG_FILE, "utf8"));
-    const updated = raw.filter(o => !ids.has(o.id));
-    fs.writeFileSync(LOG_FILE, JSON.stringify(updated, null, 2), "utf8");
+    fs.writeFileSync(LOG_FILE, JSON.stringify(raw.filter(o => !ids.has(o.id)), null, 2), "utf8");
   } catch {}
 }
 
@@ -129,8 +114,7 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   let rawOps = getLog();
   let currentSort: LogSort = { ...DEFAULT_LOG_SORT };
   let ops = sortLog(rawOps, currentSort);
-  let sel = 0;
-  let scrollTop = 0;
+  let sel = 0; let scrollTop = 0;
   let selected = new Set<string>();
 
   function NAV(): NavItem[] {
@@ -139,7 +123,6 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
       { key: "Ent", label: "Detail" },
       { key: "Spc", label: "Select" },
       { key: "A",   label: "All" },
-      { key: "S",   label: "Sort" },
       { key: "U",   label: "Undo" },
       { key: "X",   label: "Delete" },
       { key: "Esc", label: selected.size > 0 ? "Deselect" : "Back" },
@@ -147,7 +130,7 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   }
 
   const NR = 2;
-  function vis(): number { return Math.max(1, R() - NR - 2); }
+  function vis(): number { return Math.max(1, R() - NR - 3); }
 
   function adjustScroll(): void {
     const v = vis();
@@ -186,58 +169,65 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   }
 
   function buildRight(): string {
-    const sortStr = chalk.dim("  [S] " + logSortLabel(currentSort));
-    if (ops.length <= vis()) return sortStr;
+    if (ops.length <= vis()) return "";
     const more = ops.length - (scrollTop + vis());
-    return (more > 0 ? `↓ ${more} more` : "end") + sortStr;
+    return more > 0 ? `↓ ${more} more` : "end";
+  }
+
+  function drawMiniBar(): void {
+    const cols = C();
+    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
+    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(logSortLabel(currentSort));
+    const line  = "  " + sPart;
+    const vl    = visibleLen(line);
+    const pad   = vl < cols ? " ".repeat(cols - vl) : "";
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + pad);
+  }
+
+  function drawBottom(): void {
+    drawMiniBar();
+    const cols = C();
+    const ls   = buildLeft()  ? "  " + buildLeft()  : "";
+    const rs   = buildRight() ? buildRight() + "  " : "";
+    const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
+    w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
   }
 
   function drawLogContent(): void {
-    const start = NR + 2;
-    const cols = C();
-    const v = vis();
+    const start = NR + 2; const cols = C(); const v = vis();
     let out = "";
     if (!ops.length) {
       out += at(start, 1) + clr() + chalk.dim("  (no file operations yet)");
       for (let i = 1; i < v; i++) out += at(start + i, 1) + clr();
-      w(out);
-      return;
+      w(out); return;
     }
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr();
-      const op = ops[scrollTop + i];
-      if (!op) continue;
+      const op = ops[scrollTop + i]; if (!op) continue;
       const isActive = (scrollTop + i) === sel;
-      const isSel = selected.has(op.id);
-      const badge = statusBadge(op);
-      const kLabel = kindLabel(op.kind);
+      const isSel    = selected.has(op.id);
+      const badge    = statusBadge(op);
+      const kLabel   = kindLabel(op.kind);
       const srcShort = path.basename(op.srcPath);
-      const timeStr = chalk.dim(fmtTime(op.timestamp));
+      const timeStr  = chalk.dim(fmtTime(op.timestamp));
       const undoHint = canUndo(op) ? chalk.green(" ↩") : chalk.dim("  ");
-      const nameStr = srcShort.length > 26 ? srcShort.slice(0, 25) + "…" : srcShort.padEnd(26);
-      const prefix = isSel ? chalk.magenta("✓ ") : "  ";
-      const left = ` ${prefix}${badge} ${kLabel}  ${nameStr}${undoHint}`;
-      const pad = Math.max(1, cols - visibleLen(left) - visibleLen(timeStr) - 2);
-      if (isActive && isSel) {
-        out += chalk.bgMagenta.white.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols));
-      } else if (isActive) {
-        out += chalk.bgWhite.black.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols));
-      } else if (isSel) {
-        out += chalk.magenta(left) + " ".repeat(pad) + timeStr;
-      } else {
-        out += left + " ".repeat(pad) + timeStr;
-      }
+      const nameStr  = srcShort.length > 26 ? srcShort.slice(0, 25) + "…" : srcShort.padEnd(26);
+      const prefix   = isSel ? chalk.magenta("✓ ") : "  ";
+      const left     = ` ${prefix}${badge} ${kLabel}  ${nameStr}${undoHint}`;
+      const pad      = Math.max(1, cols - visibleLen(left) - visibleLen(timeStr) - 2);
+      if      (isActive && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols));
+      else if (isActive)          out += chalk.bgWhite.black.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols));
+      else if (isSel)             out += chalk.magenta(left) + " ".repeat(pad) + timeStr;
+      else                        out += left + " ".repeat(pad) + timeStr;
     }
     w(out);
   }
 
   function drawDetailContent(op: FileOp): void {
-    const start = NR + 2;
-    const v = R() - NR - 2;
+    const start  = NR + 2; const v = R() - NR - 2;
     const kindColor = op.kind === "copy" ? chalk.cyan : op.kind === "move" ? chalk.magenta : op.kind === "rename" ? chalk.blue : chalk.yellow;
-    const undoable = canUndo(op);
-    let out = "";
-    let ln = 0;
+    const undoable  = canUndo(op);
+    let out = ""; let ln = 0;
     function line(content: string) { if (ln >= v) return; out += at(start + ln, 1) + clr() + content; ln++; }
     line("");
     line("  " + kindColor.bold(op.kind.toUpperCase()) + "  " + statusBadge(op) + "  " + chalk.dim(fmtTime(op.timestamp)));
@@ -256,21 +246,16 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
     line("");
     line("  " + chalk.dim("type:  ") + chalk.white(op.isDir ? "directory" : "file"));
     if (undoable) {
-      line("");
-      line("  " + chalk.green("↩ undo available") + chalk.dim("  —  press U to undo"));
+      line(""); line("  " + chalk.green("↩ undo available") + chalk.dim("  —  press U to undo"));
     } else if (op.status === "done") {
-      line("");
-      line("  " + chalk.dim("↩ undo not available") + chalk.dim("  (files may have moved or been deleted)"));
+      line(""); line("  " + chalk.dim("↩ undo not available") + chalk.dim("  (files may have moved or been deleted)"));
     }
-    if (op.status === "error" && op.error) {
-      line("");
-      line("  " + chalk.red("error: " + op.error));
-    }
+    if (op.status === "error" && op.error) { line(""); line("  " + chalk.red("error: " + op.error)); }
     for (let i = ln; i < v; i++) out += at(start + i, 1) + clr();
     w(out);
   }
 
-  function fullDraw(): void { drawNavbar([NAV()]); drawLogContent(); drawBottomBar(buildLeft(), buildRight()); }
+  function fullDraw(): void { drawNavbar([NAV()]); drawLogContent(); drawBottom(); }
   function onResize(): void { clearScreen(); adjustScroll(); fullDraw(); }
 
   function cleanup(): void {
@@ -286,42 +271,30 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
     stdin.removeListener("data", onKey);
     showSortPicker("log", currentSort, R() - 2,
       (result) => {
-        currentSort = result;
-        applySort();
+        currentSort = result; applySort();
         process.stdout.on("resize", onResize);
-        fullDraw();
-        stdin.on("data", onKey);
+        fullDraw(); stdin.on("data", onKey);
       },
-      () => {
-        process.stdout.on("resize", onResize);
-        fullDraw();
-        stdin.on("data", onKey);
-      }
+      () => { process.stdout.on("resize", onResize); fullDraw(); stdin.on("data", onKey); }
     );
   }
 
   function showConfirmDelete(targets: FileOp[]): void {
     const multi = targets.length > 1;
     const confirmNav: NavItem[] = [
-      { key: "Y", label: multi ? `Delete ${targets.length} entries` : "Delete Entry", color: "red" },
+      { key: "Y",     label: multi ? `Delete ${targets.length} entries` : "Delete Entry", color: "red" },
       { key: "N/Esc", label: "Cancel", color: "green" },
     ];
-
     function drawConfirm(): void {
-      const start = 3;
-      const avail = R() - 3;
-      const cols = C();
+      const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);
-      let out = "";
-      let ln = 0;
+      let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
         line(chalk.bold(`  Delete ${targets.length} log entries`));
         line(chalk.dim("  (only removes entries from history — files are not affected)"));
         line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        for (const t of targets.slice(0, avail - 4)) {
-          line("  " + kindLabel(t.kind) + "  " + chalk.white(path.basename(t.srcPath)));
-        }
+        for (const t of targets.slice(0, avail - 4)) line("  " + kindLabel(t.kind) + "  " + chalk.white(path.basename(t.srcPath)));
         if (targets.length > avail - 4) line(chalk.gray(`  ... and ${targets.length - (avail - 4)} more`));
       } else {
         const t = targets[0];
@@ -330,199 +303,126 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
         line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
         line("  " + kindLabel(t.kind) + "  " + chalk.white(path.basename(t.srcPath)));
         line("  " + chalk.dim("from: ") + chalk.white(homify(t.srcPath)));
-        if (t.kind === "rename") {
-          line("  " + chalk.dim("to:   ") + chalk.white(t.destName));
-        } else {
-          line("  " + chalk.dim("to:   ") + chalk.white(homify(t.destPath)));
-        }
+        if (t.kind === "rename") { line("  " + chalk.dim("to:   ") + chalk.white(t.destName)); }
+        else { line("  " + chalk.dim("to:   ") + chalk.white(homify(t.destPath))); }
         line("  " + chalk.dim("time: ") + chalk.white(fmtTime(t.timestamp)));
       }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out);
-      drawBottomBar("Remove from log history?", "");
+      w(out); drawBottomBar("Remove from log history?", "");
     }
-
     process.stdout.removeListener("resize", onResize);
     const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.on("resize", onCR);
-    stdin.removeListener("data", onKey);
-
+    process.stdout.on("resize", onCR); stdin.removeListener("data", onKey);
     function onConfirm(k: string): void {
       if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirm);
-        process.stdout.removeListener("resize", onCR);
-        const ids = new Set(targets.map(t => t.id));
-        removeOpsFromLog(ids);
-        loadLog();
-        rawOps = getLog();
-        ops = sortLog(rawOps, currentSort);
-        selected.clear();
-        sel = Math.min(sel, Math.max(0, ops.length - 1));
-        adjustScroll();
-        process.stdout.on("resize", onResize);
-        stdin.on("data", onKey);
-        fullDraw();
-        return;
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+        removeOpsFromLog(new Set(targets.map(t => t.id)));
+        loadLog(); rawOps = getLog(); ops = sortLog(rawOps, currentSort);
+        selected.clear(); sel = Math.min(sel, Math.max(0, ops.length - 1)); adjustScroll();
+        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw(); return;
       }
       if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onConfirm);
-        process.stdout.removeListener("resize", onCR);
-        process.stdout.on("resize", onResize);
-        stdin.on("data", onKey);
-        fullDraw();
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw();
       }
     }
-
-    stdin.on("data", onConfirm);
-    clearScreen();
-    drawConfirm();
+    stdin.on("data", onConfirm); clearScreen(); drawConfirm();
   }
 
   function showUndoError(errMsg: string): void {
     const errorNav: NavItem[] = [{ key: "Esc", label: "Back", color: "green" }];
     function drawError(): void {
-      const start = 3;
-      const avail = R() - 3;
+      const start = 3; const avail = R() - 3;
       drawNavbar([errorNav]);
-      let out = "";
-      let ln = 0;
+      let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       line(chalk.red.bold("  Undo failed"));
       line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
       line("  " + chalk.red(errMsg));
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out);
-      drawBottomBar("Undo error", "");
+      w(out); drawBottomBar("Undo error", "");
     }
     process.stdout.removeListener("resize", onResize);
     const onER = () => { clearScreen(); drawError(); };
-    process.stdout.on("resize", onER);
-    stdin.removeListener("data", onKey);
+    process.stdout.on("resize", onER); stdin.removeListener("data", onKey);
     function onErrKey(k: string): void {
       if (k === "\u001b" || k === "\u0003" || k === "\r") {
-        stdin.removeListener("data", onErrKey);
-        process.stdout.removeListener("resize", onER);
-        process.stdout.on("resize", onResize);
-        stdin.on("data", onKey);
-        fullDraw();
+        stdin.removeListener("data", onErrKey); process.stdout.removeListener("resize", onER);
+        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw();
       }
     }
-    stdin.on("data", onErrKey);
-    clearScreen();
-    drawError();
+    stdin.on("data", onErrKey); clearScreen(); drawError();
   }
 
   function showUndoConfirm(op: FileOp): void {
-    const undoable = canUndo(op);
-    const undoDesc = (() => {
-      if (op.kind === "copy")   return `Delete copy at: ${homify(op.destPath)}`;
+    const undoable  = canUndo(op);
+    const undoDesc  = (() => {
+      if (op.kind === "copy")                      return `Delete copy at: ${homify(op.destPath)}`;
       if (op.kind === "move" || op.kind === "cut") return `Move back to: ${homify(op.srcPath)}`;
-      if (op.kind === "rename") return `Rename back to: ${op.srcName}`;
+      if (op.kind === "rename")                    return `Rename back to: ${op.srcName}`;
       return "Undo operation";
     })();
-
     const confirmNav: NavItem[] = undoable
-      ? [
-          { key: "Y",     label: "Confirm Undo",  color: "yellow" },
-          { key: "N/Esc", label: "Cancel",         color: "green"  },
-        ]
-      : [
-          { key: "Esc", label: "Back", color: "green" },
-        ];
+      ? [{ key: "Y", label: "Confirm Undo", color: "yellow" }, { key: "N/Esc", label: "Cancel", color: "green" }]
+      : [{ key: "Esc", label: "Back", color: "green" }];
 
     function drawConfirm(): void {
-      const start = 3;
-      const avail = R() - 3;
-      const cols = C();
+      const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);
-      let out = "";
-      let ln = 0;
+      let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (!undoable) {
         line(chalk.red.bold("  Cannot undo this operation"));
         line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
         line("  " + chalk.dim("Files may have been moved, renamed, or deleted since this operation."));
-        line("");
-        line("  " + chalk.dim("operation: ") + chalk.white(op.kind.toUpperCase()));
+        line(""); line("  " + chalk.dim("operation: ") + chalk.white(op.kind.toUpperCase()));
         line("  " + chalk.dim("from:      ") + chalk.white(homify(op.srcPath)));
-        if (op.kind === "rename") {
-          line("  " + chalk.dim("to:        ") + chalk.white(op.destName));
-        } else {
-          line("  " + chalk.dim("to:        ") + chalk.white(homify(op.destPath)));
-        }
+        if (op.kind === "rename") { line("  " + chalk.dim("to:        ") + chalk.white(op.destName)); }
+        else { line("  " + chalk.dim("to:        ") + chalk.white(homify(op.destPath))); }
       } else {
         line(chalk.yellow.bold("  Undo: " + op.kind.toUpperCase()));
         line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        line("  " + chalk.dim("what will happen:"));
-        line("  " + chalk.white(undoDesc));
-        line("");
+        line("  " + chalk.dim("what will happen:")); line("  " + chalk.white(undoDesc)); line("");
         line("  " + chalk.dim("original operation:"));
         line("  " + chalk.dim("from: ") + chalk.white(homify(op.srcPath)));
-        if (op.kind === "rename") {
-          line("  " + chalk.dim("to:   ") + chalk.white(op.destName));
-        } else {
-          line("  " + chalk.dim("to:   ") + chalk.white(homify(op.destPath)));
-        }
-        if (op.kind === "copy") {
-          line("");
-          line("  " + chalk.yellow("warning: this will permanently delete the copied file/folder"));
-        }
+        if (op.kind === "rename") { line("  " + chalk.dim("to:   ") + chalk.white(op.destName)); }
+        else { line("  " + chalk.dim("to:   ") + chalk.white(homify(op.destPath))); }
+        if (op.kind === "copy") { line(""); line("  " + chalk.yellow("warning: this will permanently delete the copied file/folder")); }
       }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out);
-      drawBottomBar(undoable ? "Undo operation?" : "Undo not available", "");
+      w(out); drawBottomBar(undoable ? "Undo operation?" : "Undo not available", "");
     }
 
     process.stdout.removeListener("resize", onResize);
     const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.on("resize", onCR);
-    stdin.removeListener("data", onKey);
+    process.stdout.on("resize", onCR); stdin.removeListener("data", onKey);
 
     function onConfirm(k: string): void {
       if (!undoable) {
         if (k === "\u001b" || k === "\u0003" || k === "n" || k === "N" || k === "\r") {
-          stdin.removeListener("data", onConfirm);
-          process.stdout.removeListener("resize", onCR);
-          process.stdout.on("resize", onResize);
-          stdin.on("data", onKey);
-          fullDraw();
+          stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+          process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw();
         }
         return;
       }
       if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirm);
-        process.stdout.removeListener("resize", onCR);
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
         const err = performUndo(op);
         if (!err) {
-          removeOpFromLog(op.id);
-          loadLog();
-          rawOps = getLog();
-          ops = sortLog(rawOps, currentSort);
-          selected.clear();
-          sel = Math.min(sel, Math.max(0, ops.length - 1));
-          adjustScroll();
+          removeOpFromLog(op.id); loadLog(); rawOps = getLog();
+          ops = sortLog(rawOps, currentSort); selected.clear();
+          sel = Math.min(sel, Math.max(0, ops.length - 1)); adjustScroll();
         }
-        process.stdout.on("resize", onResize);
-        stdin.on("data", onKey);
-        if (err) {
-          showUndoError(err);
-        } else {
-          fullDraw();
-        }
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        if (err) showUndoError(err); else fullDraw();
         return;
       }
       if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onConfirm);
-        process.stdout.removeListener("resize", onCR);
-        process.stdout.on("resize", onResize);
-        stdin.on("data", onKey);
-        fullDraw();
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw();
       }
     }
-
-    stdin.on("data", onConfirm);
-    clearScreen();
-    drawConfirm();
+    stdin.on("data", onConfirm); clearScreen(); drawConfirm();
   }
 
   function showDetail(op: FileOp): void {
@@ -531,99 +431,42 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
       { key: "X",   label: "Delete Entry", color: "red" },
       { key: "Esc", label: "Back" },
     ];
-
     process.stdout.removeListener("resize", onResize);
-    const onDR = () => {
-      clearScreen();
-      drawNavbar([detailNav]);
-      drawDetailContent(op);
-      drawBottomBar(op.kind.toUpperCase(), "");
-    };
+    const onDR = () => { clearScreen(); drawNavbar([detailNav]); drawDetailContent(op); drawBottomBar(op.kind.toUpperCase(), ""); };
     process.stdout.on("resize", onDR);
-
     function onDetailKey(k: string): void {
-      if (k === "\u0003") {
-        stdin.removeListener("data", onDetailKey);
-        process.stdout.removeListener("resize", onDR);
-        cleanup();
-        setTimeout(onBack, 20);
-        return;
-      }
+      if (k === "\u0003") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); cleanup(); setTimeout(onBack, 20); return; }
       if (k === "\u001b" || k === "q") {
-        stdin.removeListener("data", onDetailKey);
-        process.stdout.removeListener("resize", onDR);
-        process.stdout.on("resize", onResize);
-        clearScreen();
-        fullDraw();
-        stdin.on("data", onKey);
-        return;
+        stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR);
+        process.stdout.on("resize", onResize); clearScreen(); fullDraw(); stdin.on("data", onKey); return;
       }
-      if (k === "u" || k === "U") {
-        stdin.removeListener("data", onDetailKey);
-        process.stdout.removeListener("resize", onDR);
-        showUndoConfirm(op);
-        return;
-      }
-      if (k === "x" || k === "X") {
-        stdin.removeListener("data", onDetailKey);
-        process.stdout.removeListener("resize", onDR);
-        showConfirmDelete([op]);
-        return;
-      }
+      if (k === "u" || k === "U") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); showUndoConfirm(op); return; }
+      if (k === "x" || k === "X") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); showConfirmDelete([op]); return; }
     }
-
-    stdin.removeListener("data", onKey);
-    stdin.on("data", onDetailKey);
-    clearScreen();
-    drawNavbar([detailNav]);
-    drawDetailContent(op);
-    drawBottomBar(op.kind.toUpperCase(), "");
+    stdin.removeListener("data", onKey); stdin.on("data", onDetailKey);
+    clearScreen(); drawNavbar([detailNav]); drawDetailContent(op); drawBottomBar(op.kind.toUpperCase(), "");
   }
 
   function onKey(raw: string): void {
-    if (raw === "\u001b[A") {
-      if (sel > 0) { sel--; adjustScroll(); fullDraw(); }
-      return;
-    }
-    if (raw === "\u001b[B") {
-      if (sel < ops.length - 1) { sel++; adjustScroll(); fullDraw(); }
-      return;
-    }
+    if (raw === "\u001b[A") { if (sel > 0) { sel--; adjustScroll(); fullDraw(); } return; }
+    if (raw === "\u001b[B") { if (sel < ops.length - 1) { sel++; adjustScroll(); fullDraw(); } return; }
     if (raw === "\u0003") { exit(); return; }
-    if (raw === "\u001b") {
-      if (selected.size > 0) { selected.clear(); fullDraw(); }
-      else exit();
-      return;
-    }
+    if (raw === "\u001b") { if (selected.size > 0) { selected.clear(); fullDraw(); } else exit(); return; }
     if (raw === "q") { exit(); return; }
     if (raw.startsWith("\u001b")) return;
     if (raw === " ")             { toggleSelect(); fullDraw(); return; }
     if (raw === "a")             { selectAll();   fullDraw(); return; }
     if (raw === "s")             { doSort(); return; }
-    if (raw === "x" || raw === "X") {
-      const targets = getTargets();
-      if (targets.length) showConfirmDelete(targets);
-      return;
-    }
-    if (raw === "u" || raw === "U") {
-      if (!ops.length) return;
-      showUndoConfirm(ops[sel]);
-      return;
-    }
-    if (raw === "\r" && ops.length > 0) {
-      showDetail(ops[sel]);
-      return;
-    }
+    if (raw === "x" || raw === "X") { const t = getTargets(); if (t.length) showConfirmDelete(t); return; }
+    if (raw === "u" || raw === "U") { if (ops.length) showUndoConfirm(ops[sel]); return; }
+    if (raw === "\r" && ops.length > 0) { showDetail(ops[sel]); return; }
   }
 
   process.stdout.on("resize", onResize);
   if (stdin.isTTY) stdin.setRawMode(true);
-  stdin.resume();
-  stdin.setEncoding("utf8");
-  stdin.on("data", onKey);
+  stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
   if (ownsAltScreen) enterAlt();
-  clearScreen();
-  fullDraw();
+  clearScreen(); fullDraw();
 }
 
 export function showFileOpsLog(onBack: () => void): void { runLogPanel(process.stdin, onBack, true); }
