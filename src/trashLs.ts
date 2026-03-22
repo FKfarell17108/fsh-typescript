@@ -20,8 +20,8 @@ export function interactiveTrash(onExit: () => void): void {
         { key: "Ent", label: "Preview"},
       ],
       [
-        { key: "R", label: "Restore"},
-        { key: "X", label: "Delete Forever"},
+        { key: "R", label: "Restore" },
+        { key: "X", label: "Delete Forever" },
         { key: "D", label: "Empty Trash"},
         { key: "Esc", label: selected.size > 0 ? "Deselect" : "Quit"},
       ],
@@ -92,7 +92,7 @@ export function interactiveTrash(onExit: () => void): void {
 
   function showConfirmDelete(targets: TrashEntry[], onBack: () => void): void {
     const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Delete Forever (cannot undo)"}, { key: "N/Esc", label: "Cancel"}];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Delete Forever (cannot undo)", color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
       drawNavbar([confirmNav]);
@@ -125,7 +125,7 @@ export function interactiveTrash(onExit: () => void): void {
 
   function showConfirmEmpty(): void {
     const total = entries.length;
-    const confirmNav: NavItem[] = [{ key: "Y", label: `Empty Trash (${total} items)`}, { key: "N/Esc", label: "Cancel"}];
+    const confirmNav: NavItem[] = [{ key: "Y", label: `Empty Trash (${total} items)`, color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
       drawNavbar([confirmNav]);
@@ -149,7 +149,7 @@ export function interactiveTrash(onExit: () => void): void {
   function showPreview(entry: TrashEntry): void {
     const src = path.join(TRASH_DIR, entry.id);
     const previewNav: NavItem[] = [
-      { key: "Esc", label: "Back"}, { key: "R", label: "Restore"}, { key: "X", label: "Delete Forever"},
+      { key: "Esc", label: "Back" }, { key: "R", label: "Restore" }, { key: "X", label: "Delete Forever" },
       ...(entry.isDir ? [{ key: "O", label: "Browse Dir"} as NavItem] : []),
     ];
     function drawPreview(): void {
@@ -201,7 +201,7 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
   let entries: { name: string; isDir: boolean }[] = [];
   try { entries = fs.readdirSync(dirPath, { withFileTypes: true }).map(e => ({ name: e.name, isDir: e.isDirectory() })).sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name)); } catch { onBack(); return; }
   let sel = 0; let scrollTop = 0;
-  const nav: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back"}];
+  const nav: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
@@ -234,7 +234,7 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
 }
 
 function browseFile(filePath: string, name: string, stdin: NodeJS.ReadStream, onBack: () => void): void {
-  const nav: NavItem[] = [{ key: "Esc", label: "Back"}];
+  const nav: NavItem[] = [{ key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function drawContent(): void {

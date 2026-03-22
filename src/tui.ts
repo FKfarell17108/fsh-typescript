@@ -10,7 +10,8 @@ export const NAVBAR_ROWS = 3;
 export const FOOTER_ROWS = 0;
 export function getNR(): number { return 0; }
 
-export type NavItem = { key: string; label: string; pri?: number; };
+export type NavItemColor = "default" | "green" | "yellow" | "red" | "cyan";
+export type NavItem = { key: string; label: string; pri?: number; color?: NavItemColor; };
 export type NavRows = NavItem[][];
 
 export function visibleLen(str: string): number {
@@ -33,6 +34,16 @@ export function padOrTrim(str: string, width: number): string {
   return out + chalk.reset("");
 }
 
+function colorKeyBlock(keyStr: string, color: NavItemColor): string {
+  switch (color) {
+    case "green":  return chalk.bgGreen.black.bold(` ${keyStr} `);
+    case "yellow": return chalk.bgYellow.black.bold(` ${keyStr} `);
+    case "red":    return chalk.bgRed.white.bold(` ${keyStr} `);
+    case "cyan":   return chalk.bgCyan.black.bold(` ${keyStr} `);
+    default:       return chalk.bgWhite.black.bold(` ${keyStr} `);
+  }
+}
+
 function renderNavRow(items: NavItem[], cols: number): string {
   if (items.length === 0) return chalk.bgBlack(" ".repeat(cols));
 
@@ -45,12 +56,12 @@ function renderNavRow(items: NavItem[], cols: number): string {
 
   for (let i = 0; i < n; i++) {
     const slotWidth = i === n - 1 ? lastSlotW : slotW;
-    const { key, label } = items[i];
+    const { key, label, color = "default" } = items[i];
     const keyPad    = Math.max(0, keyW - key.length);
     const keyLeft   = Math.floor(keyPad / 2);
     const keyRight  = keyPad - keyLeft;
     const keyStr    = " ".repeat(keyLeft) + key + " ".repeat(keyRight);
-    const keyBlock  = chalk.bgWhite.black.bold(` ${keyStr} `);
+    const keyBlock  = colorKeyBlock(keyStr, color);
     const labAvail  = Math.max(0, slotWidth - keyBlockW - 1);
     const truncated = label.length > labAvail
       ? label.slice(0, Math.max(0, labAvail - 1)) + "…"

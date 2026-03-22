@@ -270,7 +270,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function showDeleteConfirm(): void {
     const targets = getTargets(); if (!targets.length) return; const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash"}, { key: "N/Esc", label: "Cancel"}];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash", color: "yellow" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);
@@ -310,7 +310,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const editors = getInstalledEditors(); if (!editors.length) { showStatus("  no editors found", true); return; }
     if (editors.length === 1) { onOpenFile(editors[0], filePath); return; }
     const EW = Math.max(...editors.map(e => e.length)) + 2; let eSel = 0;
-    const editorNav: NavItem[] = [{ key: "◄►", label: "Editor"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back"}];
+    const editorNav: NavItem[] = [{ key: "◄►", label: "Editor"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back" }];
     function drawEditor(): void {
       drawNavbar([editorNav]);
       let out = at(3, 1) + clr() + " " + chalk.dim("choose editor:");

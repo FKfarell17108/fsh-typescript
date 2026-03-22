@@ -118,7 +118,7 @@ export function showGeneralHistory(onBack: () => void): void {
     return [[
       { key: "Nav", label: "Navigate"},
       { key: "Ent", label: entLabel()},
-      { key: "Esc", label: "Back"},
+      { key: "Esc", label: "Back" },
     ]];
   }
 
@@ -148,7 +148,7 @@ export function showGeneralHistory(onBack: () => void): void {
         { key: "Spc", label: "Select"},
         { key: "A", label: "Select All"},
         { key: "Ent", label: "Use"},
-        { key: "X", label: "Delete"},
+        { key: "X", label: "Delete" },
         { key: "D", label: "Delete All"},
         { key: "Esc", label: cmdSelected.size > 0 ? "Deselect" : "Back"},
       ]];
@@ -224,7 +224,7 @@ export function showGeneralHistory(onBack: () => void): void {
   }
 
   function showDetail(e: GeneralEvent): void {
-    const detailNAV: NavItem[] = [{ key: "Esc", label: "Back"}];
+    const detailNAV: NavItem[] = [{ key: "Esc", label: "Back" }];
     const dNR = 2; const dStart = dNR + 2; const dVis = () => R() - dNR - 2;
     process.stdout.removeListener("resize", onResize);
     const onDR = () => { clearScreen(); drawNavbar([detailNAV]); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), ""); };

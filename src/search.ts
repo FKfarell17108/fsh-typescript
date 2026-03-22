@@ -71,7 +71,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
   const NAV: NavItem[] = [
     { key: "Nav", label: "Navigate"},
     { key: "Ent", label: "Select"},
-    { key: "Esc", label: "Cancel"},
+    { key: "Esc", label: "Cancel" },
   ];
 
   function NR(): number { return 2; }
@@ -147,7 +147,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
   function showDirAction(result: SearchResult): void {
     const full = result.fullPath;
-    const actionNav: NavItem[] = [{ key: "Ent/C", label: "cd into"}, { key: "Esc", label: "Back"}];
+    const actionNav: NavItem[] = [{ key: "Ent/C", label: "cd into"}, { key: "Esc", label: "Back" }];
     function drawAction(): void {
       const nr = 3; const start = nr + 2; const avail = R() - nr - 2;
       drawNavbar([actionNav]); let out = ""; let ln = 0;
@@ -170,7 +170,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     const full = result.fullPath; const editors = getInstalledEditors();
     if (!editors.length) { cleanup(); setTimeout(() => onCancel(), 20); return; }
     const EW = Math.max(...editors.map(e => e.length)) + 2; let eSelIdx = 0;
-    const fileNav: NavItem[] = [{ key: "Ent", label: "Open"}, { key: "◄►", label: "Editor"}, { key: "Esc", label: "Back"}];
+    const fileNav: NavItem[] = [{ key: "Ent", label: "Open"}, { key: "◄►", label: "Editor"}, { key: "Esc", label: "Back" }];
     function drawFileAction(): void {
       const nr = 3; const start = nr + 2; const avail = R() - nr - 3;
       drawNavbar([fileNav]); let out = ""; let ln = 0;

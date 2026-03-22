@@ -45,7 +45,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   let active = true; let selIdx = 0; let scrollTop = 0;
 
   function NAV(): NavItem[] {
-    const items: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Select"}, { key: "Esc", label: "Cancel"}];
+    const items: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Select"}, { key: "Esc", label: "Cancel" }];
     if (onHistory) items.push({ key: "Tab", label: "History"});
     return items;
   }

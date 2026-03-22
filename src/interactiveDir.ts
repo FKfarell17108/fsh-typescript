@@ -183,7 +183,7 @@ export function interactiveDir(onExit: () => void): void {
 
   function showDeleteConfirm(): void {
     const targets = getTargets(); if (!targets.length) return; const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash"}, { key: "N/Esc", label: "Cancel"}];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash", color: "yellow" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);

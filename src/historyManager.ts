@@ -73,7 +73,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
       { key: "Spc", label: "Select"},
       { key: "A", label: "Select All"},
       { key: "Ent", label: "Use Command"},
-      { key: "X", label: "Delete"},
+      { key: "X", label: "Delete" },
       { key: "D", label: "Delete All"},
       { key: "Esc", label: selected.size > 0 ? "Deselect" : "Close"},
     ]];
@@ -136,7 +136,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
 
   function showConfirmDeleteAll(): void {
     const total = totalCmds();
-    const confirmNav: NavItem[] = [{ key: "Y", label: `Delete all ${total} commands` }, { key: "N/Esc", label: "Cancel"}];
+    const confirmNav: NavItem[] = [{ key: "Y", label: `Delete all ${total} commands`, color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
       drawNavbar([confirmNav]); let out = ""; let ln = 0;

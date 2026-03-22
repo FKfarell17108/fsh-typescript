@@ -13,7 +13,7 @@ function homify(p: string): string { const home = process.env.HOME ?? ""; return
 function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen: boolean): void {
   loadLog();
   let active = true; let ops = getLog(); let sel = 0; let scrollTop = 0;
-  const NAV: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Detail"}, { key: "Esc", label: "Back"}];
+  const NAV: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Detail"}, { key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
@@ -52,7 +52,7 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   function exit(): void { cleanup(); setTimeout(onBack, 20); }
 
   function showDetail(op: FileOp): void {
-    const detailNav: NavItem[] = [{ key: "Esc", label: "Back"}];
+    const detailNav: NavItem[] = [{ key: "Esc", label: "Back" }];
     process.stdout.removeListener("resize", onResize);
     const onDR = () => { clearScreen(); drawNavbar([detailNav]); drawDetailContent(op); drawBottomBar(op.kind.toUpperCase(), ""); };
     process.stdout.on("resize", onDR);
