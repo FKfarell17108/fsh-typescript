@@ -3,7 +3,7 @@ import path from "path";
 import chalk from "chalk";
 import { execFileSync } from "child_process";
 import { moveToTrash } from "./trash";
-import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog } from "./fileOps";
+import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog, getMoveMode, setMoveMode, clearMoveMode } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import {
@@ -69,6 +69,41 @@ export function interactiveLs(onExit: (result: LsResult) => void): void {
 
 type MultiClip = { kind: "copy" | "cut"; srcName: string; srcPath: string; isDir: boolean; items: { srcPath: string; srcName: string; isDir: boolean }[]; };
 
+type ActionKind = "copy" | "cut" | "move" | "rename" | "paste" | null;
+
+function actionColor(kind: ActionKind): (s: string) => string {
+  switch (kind) {
+    case "copy":   return chalk.hex("#56D4D4");
+    case "cut":    return chalk.hex("#FFD580");
+    case "move":   return chalk.hex("#FFA878");
+    case "rename": return chalk.hex("#D4A9F5");
+    case "paste":  return chalk.hex("#AEDD87");
+    default:       return chalk.white;
+  }
+}
+
+function actionLabel(kind: ActionKind, name: string): string {
+  if (!kind) return "";
+  const color = actionColor(kind);
+  const kindStr = kind.charAt(0).toUpperCase() + kind.slice(1);
+  return color(`${kindStr}: `) + chalk.white(name);
+}
+
+function cellActionStyle(kind: ActionKind, cell: string, isDir: boolean, hidden: boolean): string {
+  switch (kind) {
+    case "copy":
+      return chalk.hex("#56D4D4").underline(cell);
+    case "cut":
+      return chalk.hex("#FFD580").underline(cell);
+    case "move":
+      return chalk.hex("#FFA878").bold(cell);
+    default:
+      return isDir
+        ? (hidden ? chalk.cyan(cell) : chalk.blue.bold(cell))
+        : (hidden ? chalk.gray(cell) : chalk.white(cell));
+  }
+}
+
 function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => void, onOpenFile: (editor: string, file: string) => void): void {
   let currentDir = startDir;
   let showHidden = false;
@@ -86,8 +121,39 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   let browseIdx   = 0;
   let browseStack: { path: string; idx: number; scrollTop: number }[] = [];
 
+  let moveModePending: { srcPaths: string[]; srcNames: string[]; label: string } | null = null;
+
   function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
   function effectiveListW(): number { return isSplit() ? listCols() : C(); }
+
+  function getActiveActionKind(): ActionKind {
+    const cb = getClipboard() as any;
+    if (moveModePending) return "move";
+    if (cb) return cb.kind as ActionKind;
+    return null;
+  }
+
+  function getActiveActionLabel(): string {
+    const cb = getClipboard() as any;
+    if (moveModePending) return actionLabel("move", moveModePending.label);
+    if (cb) return actionLabel(cb.kind as ActionKind, cb.srcName.slice(0, 25));
+    return "";
+  }
+
+  function isItemActive(name: string): ActionKind {
+    const cb = getClipboard() as any;
+    if (moveModePending) {
+      if (moveModePending.srcNames.includes(name)) return "move";
+    }
+    if (cb) {
+      if (cb.items) {
+        if (cb.items.some((it: any) => it.srcPath === path.join(currentDir, name))) return cb.kind as ActionKind;
+      } else {
+        if (cb.srcPath === path.join(currentDir, name)) return cb.kind as ActionKind;
+      }
+    }
+    return null;
+  }
 
   function loadAll(): void {
     try {
@@ -137,6 +203,14 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         { key: "Esc", label: "Back to List" },
       ]];
     }
+    if (moveModePending) {
+      return [[
+        { key: "Nav", label: "Navigate" },
+        { key: "Ent", label: "Enter Dir" },
+        { key: "Tab", label: "Parent" },
+        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
+      ]];
+    }
     return [
       [
         { key: "Nav", label: "Navigate" },
@@ -153,7 +227,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         { key: "X", label: "Cut" },
         { key: "V", label: "Paste" },
         { key: "R", label: "Rename" },
-        { key: "M", label: "Move To" },
+        { key: "M", label: "Move" },
         { key: "D", label: "Delete" },
         { key: "H", label: "History" },
         { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
@@ -192,9 +266,9 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function browseNavigate(delta: number): void {
-    const entries = getDirEntries(pvState.content!);
-    if (!entries.length) return;
-    browseIdx = Math.max(0, Math.min(entries.length - 1, browseIdx + delta));
+    const browseEntries = getDirEntries(pvState.content!);
+    if (!browseEntries.length) return;
+    browseIdx = Math.max(0, Math.min(browseEntries.length - 1, browseIdx + delta));
     syncBrowseScroll();
     renderPreview();
     drawBottom();
@@ -242,7 +316,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     drawBottom();
   }
 
-  function NR(): number { return browseMode ? 2 : 3; }
+  function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
   function cw(): number {
     const lw = effectiveListW();
     if (!entries.length) return 16;
@@ -257,7 +331,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function drawMiniBar(): void {
-    if (browseMode) { w(at(R() - 1, 1) + clr()); return; }
+    if (browseMode || moveModePending) { w(at(R() - 1, 1) + clr()); return; }
     const cols  = C();
     const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
     const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
@@ -304,13 +378,13 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const home = process.env.HOME ?? ""; const rel = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
     const dirs = entries.filter(e => e.isDir).length; const files = entries.length - dirs;
     const hidC = allEntries.filter(e => e.name.startsWith(".")).length;
-    const cb   = getClipboard() as any;
     let s = rel;
     if (dirs)  s += `  ${dirs}d`;
     if (files) s += `  ${files}f`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size)       s += chalk.magenta(`  ${selected.size} sel`);
-    if (cb) s += (cb.kind === "copy" ? chalk.cyan("  ⎘ ") : chalk.yellow("  ✂ ")) + chalk.dim(cb.srcName.slice(0, 20));
+    const activeLabel = getActiveActionLabel();
+    if (activeLabel) s += "    " + activeLabel;
     return s;
   }
   function buildRight(): string {
@@ -323,8 +397,25 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const more = tr() - (scrollTop + vis());
     return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
   }
+
+  function drawMoveConfirmBar(): void {
+    if (!moveModePending) return;
+    const cols = C();
+    const label   = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label);
+    const btnY    = "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here");
+    const btnEsc  = "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
+    const line    = label + btnY + btnEsc;
+    const vl      = visibleLen(line);
+    w(at(R() - 1, 1) + clr());
+    w(at(R(), 1) + clr() + line + (vl < cols ? " ".repeat(cols - vl) : ""));
+  }
+
   function drawBottom(): void {
     if (statusMsg) { w(at(R(), 1) + clr() + statusMsg); return; }
+    if (moveModePending) {
+      drawMoveConfirmBar();
+      return;
+    }
     drawMiniBar();
     const cols  = C();
     const ls    = buildLeft()  ? "  " + buildLeft()  : "";
@@ -332,6 +423,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const gap   = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
     w(at(R(), 1) + clr() + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
   }
+
   function showStatus(msg: string, isErr = false): void {
     if (statusTimer) clearTimeout(statusTimer);
     statusMsg = isErr ? chalk.red(msg) : chalk.green(msg);
@@ -356,8 +448,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, isDir } = entries[i];
         const isCursor = i === selIdx; const isSel = selected.has(name);
-        const hidden = name.startsWith("."); const cb = getClipboard() as any;
-        const clipped = cb && !cb.items && cb.srcPath === path.join(currentDir, name);
+        const hidden = name.startsWith(".");
+        const itemAction = isItemActive(name);
         const prefix   = isSel ? "✓ " : "  ";
         const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
@@ -367,7 +459,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
         else if (isSel)             line += chalk.magenta(cell);
-        else if (clipped)           line += cb.kind === "copy" ? chalk.cyan.underline(cell) : chalk.yellow.underline(cell);
+        else if (itemAction)        line += cellActionStyle(itemAction, cell, isDir, hidden);
         else if (isDir)             line += hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
         else                        line += hidden ? chalk.gray(cell) : chalk.white(cell);
         visCount += cWidth;
@@ -395,8 +487,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     return { kind, srcPath: items[0].srcPath, srcName: items.length === 1 ? items[0].srcName : `${items.length} items`, isDir: items[0].isDir, items };
   }
 
-  function doCopy(): void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("copy") as any); render(); }
-  function doCut():  void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("cut")  as any); render(); }
+  function doCopy(): void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("copy") as any); selected.clear(); render(); }
+  function doCut():  void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("cut")  as any); selected.clear(); render(); }
 
   function doPaste(): void {
     const cb = getClipboard() as any; if (!cb) { showStatus("  nothing in clipboard", true); return; }
@@ -407,6 +499,35 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (errors > 0) showStatus(`  ${errors} error(s) during paste`, true);
     else showStatus(`  ${cb.kind === "copy" ? "Copied" : "Moved"}: ${items.length} item${items.length > 1 ? "s" : ""}`);
     reload(); render();
+  }
+
+  function doMoveInit(): void {
+    const targets = getTargets(); if (!targets.length) return;
+    const items = targets.map(t => ({ srcPath: path.join(currentDir, t.name), srcName: t.name }));
+    const label = items.length === 1 ? items[0].srcName : `${items.length} items`;
+    moveModePending = { srcPaths: items.map(i => i.srcPath), srcNames: items.map(i => i.srcName), label };
+    selected.clear();
+    clearClipboard();
+    fullRedraw();
+  }
+
+  function doMoveConfirm(): void {
+    if (!moveModePending) return;
+    const { srcPaths, srcNames } = moveModePending;
+    let errors = 0;
+    for (let i = 0; i < srcPaths.length; i++) {
+      const err = execMove(srcPaths[i], uniqueDest(currentDir, srcNames[i]));
+      if (err) errors++;
+    }
+    const label = moveModePending.label;
+    moveModePending = null;
+    if (errors > 0) showStatus(`  ${errors} error(s) during move`, true);
+    else {
+      const home = process.env.HOME ?? "";
+      const rel  = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
+      showStatus(`  Moved: ${label}  →  ${rel}`);
+    }
+    reload(); fullRedraw();
   }
 
   function doRename(): void {
@@ -422,25 +543,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         const err = execRename(full, newName);
         if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}  →  ${newName}`);
         selected.clear(); reload(newName); fullRedraw(); stdin.on("data", onKey);
-      },
-      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
-    );
-  }
-
-  function doMoveTo(): void {
-    const targets = getTargets(); if (!targets.length) return;
-    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "Move to:", currentDir + "/",
-      (destDir) => {
-        process.stdout.on("resize", onResize);
-        const expanded = destDir.replace(/^~/, process.env.HOME ?? "~").replace(/\/$/, "");
-        if (!fs.existsSync(expanded)) { try { fs.mkdirSync(expanded, { recursive: true }); } catch (ex: any) { showStatus("  Error: " + ex.message, true); fullRedraw(); stdin.on("data", onKey); return; } }
-        let errors = 0;
-        for (const t of targets) { const err = execMove(path.join(currentDir, t.name), uniqueDest(expanded, t.name)); if (err) errors++; }
-        selected.clear();
-        if (errors > 0) { showStatus(`  ${errors} error(s)`, true); }
-        else { const home = process.env.HOME ?? ""; const rel = expanded.startsWith(home) ? "~" + expanded.slice(home.length) : expanded; showStatus(`  Moved ${targets.length} item${targets.length > 1 ? "s" : ""}  →  ${rel}`); }
-        reload(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
@@ -596,6 +698,25 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       return;
     }
 
+    if (moveModePending) {
+      if (k === "\u0003") { moveModePending = null; fullRedraw(); onQuit(); return; }
+      if (k === "\u001b") { moveModePending = null; fullRedraw(); return; }
+      if (k === "y" || k === "Y" || k === "\r") {
+        if (k === "\r" && entries.length && entries[selIdx].isDir) {
+          const target = path.join(currentDir, entries[selIdx].name);
+          try { fs.readdirSync(target); currentDir = target; process.chdir(currentDir); reload(); fullRedraw(); } catch { showStatus("  cannot open directory", true); }
+          return;
+        }
+        doMoveConfirm(); return;
+      }
+      if (k === "\t") { goParent(); return; }
+      if (k === ".") { toggleHidden(); return; }
+      if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
+      if (k === "\u001b[6~") { scrollPreview(pvState,  5, vis()); renderPreview(); drawBottom(); return; }
+      if (navigate(k)) render();
+      return;
+    }
+
     if (k === "\u0003") { onQuit(); return; }
     if (k === "h") { openLog(); return; }
     if (k === "\u001b") {
@@ -621,7 +742,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "x")   { doCut(); return; }
     if (k === "v")   { doPaste(); return; }
     if (k === "r")   { doRename(); return; }
-    if (k === "m")   { doMoveTo(); return; }
+    if (k === "m")   { doMoveInit(); return; }
     if (k === ".")   { toggleHidden(); return; }
     if (k === "d" || k === "D") { if (entries.length) showDeleteConfirm(); return; }
     if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }

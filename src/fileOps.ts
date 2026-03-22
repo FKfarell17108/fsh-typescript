@@ -23,11 +23,27 @@ export type Clipboard = {
   srcPath: string;
   srcName: string;
   isDir:   boolean;
+  items?:  { srcPath: string; srcName: string; isDir: boolean }[];
 } | null;
+
+export type MoveMode = {
+  srcPaths: string[];
+  srcNames: string[];
+  label:    string;
+} | null;
+
+export type ActiveAction =
+  | { kind: "copy";   label: string }
+  | { kind: "cut";    label: string }
+  | { kind: "paste";  label: string }
+  | { kind: "move";   label: string }
+  | { kind: "rename"; label: string }
+  | null;
 
 const LOG_FILE = path.join(os.homedir(), ".fsh_fileops.json");
 
 let clipboard: Clipboard = null;
+let moveMode: MoveMode   = null;
 let opLog: FileOp[]      = [];
 
 export function loadLog(): void {
@@ -58,6 +74,10 @@ export function getClipboard(): Clipboard { return clipboard; }
 export function setClipboard(c: Clipboard): void { clipboard = c; }
 export function clearClipboard(): void { clipboard = null; }
 export function getLog(): FileOp[] { return opLog; }
+
+export function getMoveMode(): MoveMode { return moveMode; }
+export function setMoveMode(m: MoveMode): void { moveMode = m; }
+export function clearMoveMode(): void { moveMode = null; }
 
 function pushOp(op: FileOp): void {
   opLog.unshift(op);
