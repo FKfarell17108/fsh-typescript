@@ -17,18 +17,23 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
-  function buildLeft(): string { return `File History  ${ops.length} op${ops.length === 1 ? "" : "s"}`; }
+  function buildLeft(): string { return ops.length ? `File History  ${ops.length} op${ops.length === 1 ? "" : "s"}` : "File History"; }
   function buildRight(): string { if (ops.length <= vis()) return ""; const more = ops.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
 
   function drawLogContent(): void {
     const start = NR + 2; const cols = C(); const v = vis(); let out = "";
+    if (!ops.length) {
+      out += at(start, 1) + clr() + chalk.dim("  (no file operations yet)");
+      for (let i = 1; i < v; i++) out += at(start + i, 1) + clr();
+      w(out); return;
+    }
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr(); const op = ops[scrollTop + i]; if (!op) continue;
-      const active = (scrollTop + i) === sel; const badge = statusBadge(op); const kLabel = kindLabel(op.kind);
+      const isActive = (scrollTop + i) === sel; const badge = statusBadge(op); const kLabel = kindLabel(op.kind);
       const srcShort = path.basename(op.srcPath); const timeStr = chalk.dim(fmtTime(op.timestamp));
       const nameStr = srcShort.length > 28 ? srcShort.slice(0, 27) + "…" : srcShort.padEnd(28);
       const left = ` ${badge} ${kLabel}  ${nameStr}`; const pad = Math.max(1, cols - visibleLen(left) - visibleLen(timeStr) - 2);
-      if (active) out += chalk.bgWhite.black.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols)); else out += left + " ".repeat(pad) + timeStr;
+      if (isActive) out += chalk.bgWhite.black.bold(padOrTrim(left + " ".repeat(pad) + timeStr, cols)); else out += left + " ".repeat(pad) + timeStr;
     }
     w(out);
   }

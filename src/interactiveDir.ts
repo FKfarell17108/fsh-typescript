@@ -6,6 +6,14 @@ import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt
 import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
 import { showInlineInput } from "./interactiveLs";
+import {
+  PreviewPref, PreviewState,
+  getPreviewMode, listCols,
+  makePreviewState, updatePreview, forceUpdatePreview, scrollPreview,
+  drawSplitPreview, drawOverlayPreview,
+  getDirEntries, getMetaLineCount,
+  SPLIT_THRESHOLD, OVERLAY_LINES,
+} from "./preview";
 
 export function interactiveDir(onExit: () => void): void {
   let cwd = process.cwd(); loadLog();
@@ -26,39 +34,127 @@ export function interactiveDir(onExit: () => void): void {
   if (entries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
 
   const stdin = process.stdin;
-  let active = true;
   let selIdx = 0; let scrollTop = 0; let selected = new Set<string>();
   let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
+  let previewPref: PreviewPref = "auto";
+  const pvState: PreviewState  = makePreviewState();
+
+  let browseMode  = false;
+  let browseIdx   = 0;
+  let browseStack: { path: string; idx: number; scrollTop: number }[] = [];
+
+  function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
+  function effectiveListW(): number { return isSplit() ? listCols() : C(); }
+
+  function refreshPreview(): void {
+    if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
+    const full = path.join(cwd, entries[selIdx].name);
+    updatePreview(pvState, full);
+  }
+
+  function togglePreviewPref(): void {
+    const mode = getPreviewMode(previewPref);
+    previewPref = mode === "split"
+      ? (C() >= SPLIT_THRESHOLD ? "overlay" : "auto")
+      : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
+  }
+
   function NAV(): NavRows {
-    const cb = getClipboard() as any;
+    const cb   = getClipboard() as any;
+    const mode = getPreviewMode(previewPref);
+    if (browseMode) {
+      return [[
+        { key: "Nav", label: "Navigate" },
+        { key: "Ent", label: "Open/Enter" },
+        { key: "Tab", label: "Parent" },
+        { key: "Esc", label: "Back to List" },
+      ]];
+    }
     return [
       [
-        { key: "Nav", label: "Navigate"},
-        { key: "Spc", label: "Select"},
-        { key: "A", label: "Select All"},
-        { key: "Ent", label: "Enter Dir"},
-        { key: "Tab", label: "Parent Dir"},
-        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit"},
-        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden"},
+        { key: "Nav", label: "Navigate" },
+        { key: "Spc", label: "Select" },
+        { key: "A",   label: "All" },
+        { key: "Ent", label: "Enter Dir" },
+        { key: "Tab", label: "Parent" },
+        { key: "O",   label: "Browse" },
+        { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
+        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
       [
-        { key: "C", label: "Copy"},
-        { key: "X", label: "Cut"},
-        { key: "V", label: "Paste"},
-        { key: "R", label: "Rename"},
-        { key: "M", label: "Move To"},
-        { key: "D", label: "Delete"},
-        { key: "H", label: "History"},
+        { key: "C", label: "Copy" },
+        { key: "X", label: "Cut" },
+        { key: "V", label: "Paste" },
+        { key: "R", label: "Rename" },
+        { key: "M", label: "Move To" },
+        { key: "D", label: "Delete" },
+        { key: "H", label: "History" },
+        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ],
     ];
   }
 
-  const NR = 3;
-  function cw(): number { return !entries.length ? 16 : Math.max(...entries.map(e => e.name.length)) + 4; }
-  function pr(): number { return Math.max(1, Math.floor(C() / cw())); }
+  function enterBrowse(): void {
+    if (!pvState.content || pvState.content.kind !== "dir") return;
+    browseMode = true; browseIdx = 0;
+    browseStack = [{ path: pvState.path, idx: 0, scrollTop: pvState.scrollTop }];
+    syncBrowseScroll(); clearScreen(); render();
+  }
+
+  function exitBrowse(): void {
+    browseMode = false; browseIdx = 0; browseStack = []; pvState.scrollTop = 0;
+    clearScreen(); render();
+  }
+
+  function syncBrowseScroll(): void {
+    const metaLines = getMetaLineCount(pvState.content!);
+    const totalOffset = 1 + metaLines;
+    const visH = isSplit() ? Math.max(1, R() - NR() - 2 - 1) : Math.max(1, OVERLAY_LINES - 1);
+    const targetLine = totalOffset + browseIdx;
+    if (targetLine < pvState.scrollTop) pvState.scrollTop = targetLine;
+    if (targetLine >= pvState.scrollTop + visH) pvState.scrollTop = targetLine - visH + 1;
+  }
+
+  function browseNavigate(delta: number): void {
+    const entries = getDirEntries(pvState.content!); if (!entries.length) return;
+    browseIdx = Math.max(0, Math.min(entries.length - 1, browseIdx + delta));
+    syncBrowseScroll(); renderPreview(); drawBottom();
+  }
+
+  function browseEnter(): void {
+    const entries = getDirEntries(pvState.content!); if (!entries.length) return;
+    const entry = entries[browseIdx];
+    const resolvedFull = path.join(pvState.path, entry.name);
+    if (entry.isDir) {
+      browseStack.push({ path: pvState.path, idx: browseIdx, scrollTop: pvState.scrollTop });
+      forceUpdatePreview(pvState, resolvedFull);
+      browseIdx = 0; syncBrowseScroll(); renderPreview(); drawBottom();
+    }
+  }
+
+  function browseParent(): void {
+    if (browseStack.length <= 1) { exitBrowse(); return; }
+    const prev = browseStack.pop()!;
+    const parentFrame = browseStack[browseStack.length - 1];
+    forceUpdatePreview(pvState, parentFrame.path);
+    browseIdx = prev.idx; pvState.scrollTop = prev.scrollTop;
+    syncBrowseScroll(); renderPreview(); drawBottom();
+  }
+
+  function NR(): number { return browseMode ? 2 : 3; }
+  function cw(): number {
+    const lw = effectiveListW();
+    if (!entries.length) return 16;
+    return Math.min(Math.max(...entries.map(e => e.name.length)) + 4, Math.floor(lw / 2));
+  }
+  function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
-  function vis(): number { return Math.max(1, R() - NR - 2); }
+  function vis(): number {
+    const base = Math.max(1, R() - NR() - 2);
+    if (!isSplit() && pvState.content) return Math.max(1, base - 14);
+    return base;
+  }
   function adjustScroll(): void { const row = Math.floor(selIdx / pr()); const v = vis(); if (row < scrollTop) scrollTop = row; if (row >= scrollTop + v) scrollTop = row - v + 1; }
 
   function navigate(key: string): boolean {
@@ -70,7 +166,8 @@ export function interactiveDir(onExit: () => void): void {
     else if (key === "\u001b[C") { if (selIdx >= total - 1) return false; if (curCol >= p - 1 || selIdx + 1 >= total) { const ns = (curRow + 1) * p; if (ns >= total) return false; next = ns; } else next = selIdx + 1; }
     else if (key === "\u001b[H") { next = 0; } else if (key === "\u001b[F") { next = total - 1; }
     else return false;
-    next = Math.max(0, Math.min(total - 1, next)); if (next === selIdx) return false; selIdx = next; adjustScroll(); return true;
+    next = Math.max(0, Math.min(total - 1, next)); if (next === selIdx) return false;
+    selIdx = next; adjustScroll(); refreshPreview(); return true;
   }
 
   function toggleSelect(): void { if (!entries.length) return; const n = entries[selIdx].name; if (selected.has(n)) selected.delete(n); else selected.add(n); }
@@ -86,7 +183,15 @@ export function interactiveDir(onExit: () => void): void {
     if (cb) s += (cb.kind === "copy" ? chalk.cyan("  ⎘ ") : chalk.yellow("  ✂ ")) + chalk.dim(cb.srcName.slice(0, 20));
     return s;
   }
-  function buildRight(): string { if (tr() <= vis()) return ""; const more = tr() - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
+  function buildRight(): string {
+    const mode    = getPreviewMode(previewPref);
+    const modeStr = browseMode
+      ? chalk.cyan(" [browse]")
+      : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
+    if (tr() <= vis()) return modeStr;
+    const more = tr() - (scrollTop + vis());
+    return (more > 0 ? `↓ ${more} more` : "end") + modeStr;
+  }
   function drawBottom(): void {
     if (statusMsg) { w(at(R(), 1) + clr() + statusMsg); return; }
     drawBottomBar(buildLeft(), buildRight());
@@ -98,28 +203,51 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function drawContent(): void {
-    const start = NR + 2; const p = pr(); const cWidth = cw(); const v = vis();
+    const lw     = effectiveListW();
+    const start  = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
     let out = "";
+    if (!entries.length) {
+      out += at(start, 1) + "\x1b[2K" + chalk.dim("  (no subdirectories)");
+      for (let row = 1; row < v; row++) out += at(start + row, 1) + "\x1b[2K";
+      w(out); return;
+    }
     for (let row = 0; row < v; row++) {
-      out += at(start + row, 1) + clr(); const fr = scrollTop + row; let line = " ";
+      const fr = scrollTop + row;
+      let visCount = 0;
+      let line = " "; visCount += 1;
       for (let col = 0; col < p; col++) {
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, hidden } = entries[i]; const isCursor = i === selIdx; const isSel = selected.has(name);
         const cb = getClipboard() as any; const clipped = cb && !cb.items && cb.srcPath === path.join(cwd, name);
-        const prefix = isSel ? "✓ " : "  "; const padded = (prefix + name).padEnd(cWidth, " ");
-        if (isCursor && isSel) line += chalk.bgMagenta.white.bold(padded);
-        else if (isCursor) line += chalk.bgWhite.black.bold(padded);
-        else if (isSel) line += chalk.magenta(padded);
-        else if (clipped) line += cb.kind === "copy" ? chalk.cyan.underline(padded) : chalk.yellow.underline(padded);
-        else if (hidden) line += chalk.cyan(padded);
-        else line += chalk.blue.bold(padded);
+        const prefix   = isSel ? "✓ " : "  ";
+        const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
+        if (maxNameW <= 0) break;
+        const truncName = name.length > maxNameW ? name.slice(0, maxNameW - 1) + "…" : name;
+        const cell      = (prefix + truncName).padEnd(cWidth, " ").slice(0, cWidth);
+        if (visCount + cWidth > lw) break;
+        if (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
+        else if (isCursor) line += chalk.bgWhite.black.bold(cell);
+        else if (isSel) line += chalk.magenta(cell);
+        else if (clipped) line += cb.kind === "copy" ? chalk.cyan.underline(cell) : chalk.yellow.underline(cell);
+        else if (hidden) line += chalk.cyan(cell);
+        else line += chalk.blue.bold(cell);
+        visCount += cWidth;
       }
-      out += line;
+      const padNeeded = Math.max(0, lw - visCount);
+      line += " ".repeat(padNeeded);
+      out += at(start + row, 1) + "\x1b[2K" + line;
     }
     w(out);
   }
 
-  function render(): void { drawNavbar(NAV()); drawContent(); drawBottom(); }
+  function renderPreview(): void {
+    if (!pvState.content) return;
+    const bIdx = browseMode ? browseIdx : undefined;
+    if (isSplit()) drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
+    else           drawOverlayPreview(pvState, NR(), bIdx);
+  }
+
+  function render(): void { drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom(); }
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
   function exit(): void { process.chdir(cwd); cleanup(); setTimeout(onExit, 50); }
@@ -134,7 +262,7 @@ export function interactiveDir(onExit: () => void): void {
     let errors = 0; for (const item of items) { const err = cb.kind === "copy" ? execCopy(item.srcPath, uniqueDest(cwd, item.srcName)) : execMove(item.srcPath, uniqueDest(cwd, item.srcName)); if (err) errors++; }
     if (cb.kind === "cut") clearClipboard(); selected.clear();
     if (errors > 0) showStatus(`  ${errors} error(s) during paste`, true); else showStatus(`  ${cb.kind === "copy" ? "Copied" : "Moved"}: ${items.length} item${items.length > 1 ? "s" : ""}`);
-    allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); render();
+    allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); refreshPreview(); render();
   }
 
   function doRename(): void {
@@ -149,7 +277,7 @@ export function interactiveDir(onExit: () => void): void {
         const err = execRename(full, newName); if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}  →  ${newName}`);
         selected.clear(); allEntries = loadDirs(cwd); entries = visibleEntries();
         const idx = entries.findIndex(e2 => e2.name === newName); selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
-        adjustScroll(); fullRedraw(); stdin.on("data", onKey);
+        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
@@ -166,7 +294,7 @@ export function interactiveDir(onExit: () => void): void {
         let errors = 0; for (const t of targets) { const err = execMove(path.join(cwd, t.name), uniqueDest(expanded, t.name)); if (err) errors++; }
         selected.clear();
         if (errors > 0) { showStatus(`  ${errors} error(s)`, true); } else { const home = process.env.HOME ?? ""; const rel = expanded.startsWith(home) ? "~" + expanded.slice(home.length) : expanded; showStatus(`  Moved ${targets.length} item${targets.length > 1 ? "s" : ""}  →  ${rel}`); }
-        allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); fullRedraw(); stdin.on("data", onKey);
+        allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
@@ -175,11 +303,12 @@ export function interactiveDir(onExit: () => void): void {
   function reloadEntries(newCwd: string, restoreName?: string): void {
     cwd = newCwd; allEntries = loadDirs(cwd); entries = visibleEntries();
     if (!entries.length && allEntries.length) { showHidden = true; entries = visibleEntries(); }
-    selIdx = 0; scrollTop = 0; if (restoreName) { const idx = entries.findIndex(e => e.name === restoreName); if (idx >= 0) selIdx = idx; } adjustScroll();
+    selIdx = 0; scrollTop = 0; if (restoreName) { const idx = entries.findIndex(e => e.name === restoreName); if (idx >= 0) selIdx = idx; }
+    adjustScroll(); refreshPreview();
   }
   function goUp(): void { const parent = path.dirname(cwd); if (parent === cwd) return; const prev = path.basename(cwd); reloadEntries(parent, prev); if (!entries.length) { process.chdir(cwd); return exit(); } render(); }
   function goInto(name: string): void { const target = path.join(cwd, name); reloadEntries(target); if (!entries.length) { process.chdir(target); return exit(); } render(); }
-  function toggleHidden(): void { const prev = entries[selIdx]?.name; showHidden = !showHidden; entries = visibleEntries(); selIdx = 0; scrollTop = 0; if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; } adjustScroll(); render(); }
+  function toggleHidden(): void { const prev = entries[selIdx]?.name; showHidden = !showHidden; entries = visibleEntries(); selIdx = 0; scrollTop = 0; if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; } adjustScroll(); refreshPreview(); render(); }
 
   function showDeleteConfirm(): void {
     const targets = getTargets(); if (!targets.length) return; const multi = targets.length > 1;
@@ -208,7 +337,7 @@ export function interactiveDir(onExit: () => void): void {
         let errors = 0; for (const t of targets) { try { moveToTrash(path.join(cwd, t.name)); allEntries = allEntries.filter(e => e.name !== t.name); } catch { errors++; } }
         entries = visibleEntries(); selected.clear();
         if (!entries.length && !allEntries.length) { process.chdir(cwd); return exit(); }
-        if (errors) showStatus(`  ${errors} error(s)`, true); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); stdin.on("data", onKey); fullRedraw(); return;
+        if (errors) showStatus(`  ${errors} error(s)`, true); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); refreshPreview(); stdin.on("data", onKey); fullRedraw(); return;
       }
       if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }
     }
@@ -216,19 +345,36 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function openLog(): void { process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey); showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }); }
-  function onResize(): void { clearScreen(); adjustScroll(); fullRedraw(); }
+  function onResize(): void { adjustScroll(); fullRedraw(); }
   function onKey(k: string): void {
+    if (browseMode) {
+      if (k === "\u0003") { exitBrowse(); process.chdir(cwd); exit(); return; }
+      if (k === "\u001b" || k === "q") { exitBrowse(); return; }
+      if (k === "\u001b[A") { browseNavigate(-1); return; }
+      if (k === "\u001b[B") { browseNavigate(1);  return; }
+      if (k === "\u001b[5~") { browseNavigate(-5); return; }
+      if (k === "\u001b[6~") { browseNavigate(5);  return; }
+      if (k === "\t") { browseParent(); return; }
+      if (k === "\r") { browseEnter(); return; }
+      return;
+    }
     if (k === "\u0003") { process.chdir(cwd); return exit(); }
     if (k === "\u001b") { if (getClipboard()) { clearClipboard(); render(); } else if (selected.size > 0) { selected.clear(); render(); } else { process.chdir(cwd); exit(); } return; }
     if (k === "h") { openLog(); return; }
+    if (k === "o") { if (pvState.content?.kind === "dir") { enterBrowse(); } return; }
+    if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
     if (k === "\r") { if (entries.length) goInto(entries[selIdx].name); return; }
-    if (k === "\t") { goUp(); return; } if (k === ".") { toggleHidden(); return; }
-    if (k === " ") { toggleSelect(); render(); return; } if (k === "a") { selectAll(); render(); return; }
+    if (k === "\t") { goUp(); return; }
+    if (k === ".") { toggleHidden(); return; }
+    if (k === " ") { toggleSelect(); render(); return; }
+    if (k === "a") { selectAll(); render(); return; }
     if (k === "c") { doCopy(); return; } if (k === "x") { doCut(); return; } if (k === "v") { doPaste(); return; }
     if (k === "r") { doRename(); return; } if (k === "m") { doMoveTo(); return; }
     if (k === "d" || k === "D") { if (entries.length) showDeleteConfirm(); return; }
+    if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
+    if (k === "\u001b[6~") { scrollPreview(pvState,  5, vis()); renderPreview(); drawBottom(); return; }
     if (navigate(k)) render();
   }
   process.stdout.on("resize", onResize); stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
-  enterAlt(); fullRedraw();
+  refreshPreview(); enterAlt(); fullRedraw();
 }

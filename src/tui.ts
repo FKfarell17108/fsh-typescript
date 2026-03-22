@@ -73,6 +73,8 @@ function renderNavRow(items: NavItem[], cols: number): string {
   return out;
 }
 
+const MAX_NAV_ROWS = 2;
+
 export function drawNavbar(rows: NavRows): void {
   const cols = C();
   let   out  = "";
@@ -80,6 +82,9 @@ export function drawNavbar(rows: NavRows): void {
   if (rows.length === 0) {
     out += at(1, 1) + clr() + chalk.bgBlack(" ".repeat(cols));
     out += at(2, 1) + clr() + chalk.dim("─".repeat(cols));
+    for (let r = 3; r <= MAX_NAV_ROWS + 1; r++) {
+      out += at(r, 1) + clr();
+    }
     w(out);
     return;
   }
@@ -87,7 +92,13 @@ export function drawNavbar(rows: NavRows): void {
   for (let r = 0; r < rows.length; r++) {
     out += at(r + 1, 1) + clr() + renderNavRow(rows[r], cols);
   }
+
   out += at(rows.length + 1, 1) + clr() + chalk.dim("─".repeat(cols));
+
+  for (let r = rows.length + 2; r <= MAX_NAV_ROWS + 1; r++) {
+    out += at(r, 1) + clr();
+  }
+
   w(out);
 }
 

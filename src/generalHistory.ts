@@ -33,6 +33,7 @@ function categoryOf(kind: GeneralEventKind): Category {
 const CATEGORY_LABEL: Record<Category, string> = { commands: "Commands", file_mutations: "File & Folder Mutations", trash_ops: "Trash Operations" };
 const CATEGORY_COLOR: Record<Category, (s: string) => string> = { commands: chalk.green.bold, file_mutations: chalk.cyan.bold, trash_ops: chalk.yellow.bold };
 const ENTRY_COLOR: Record<Category, (s: string) => string> = { commands: chalk.green, file_mutations: chalk.cyan, trash_ops: chalk.yellow };
+const CATEGORY_EMPTY: Record<Category, string> = { commands: "no commands yet", file_mutations: "no file operations yet", trash_ops: "no trash activity yet" };
 
 function kindTag(kind: GeneralEventKind): string {
   switch (kind) {
@@ -44,7 +45,7 @@ function kindTag(kind: GeneralEventKind): string {
 }
 function fmtTime(ts: number): string { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 
-type Row = { kind: "cat_header"; cat: Category; count: number; expanded: boolean } | { kind: "entry"; event: GeneralEvent; cat: Category } | { kind: "show_more"; cat: Category; remaining: number };
+type Row = { kind: "cat_header"; cat: Category; count: number; expanded: boolean } | { kind: "entry"; event: GeneralEvent; cat: Category } | { kind: "show_more"; cat: Category; remaining: number } | { kind: "cat_empty"; cat: Category };
 
 function buildRows(evts: GeneralEvent[], expanded: Record<Category, boolean>): Row[] {
   const cats: Category[] = ["commands", "file_mutations", "trash_ops"];
@@ -52,10 +53,22 @@ function buildRows(evts: GeneralEvent[], expanded: Record<Category, boolean>): R
   for (const e of evts) buckets[categoryOf(e.kind)].push(e);
   const rows: Row[] = [];
   for (const cat of cats) {
-    const items = buckets[cat]; if (!items.length) continue;
+    const items = buckets[cat];
     rows.push({ kind: "cat_header", cat, count: items.length, expanded: expanded[cat] });
-    if (expanded[cat]) { for (const item of items) rows.push({ kind: "entry", event: item, cat }); }
-    else { for (const item of items.slice(0, PREVIEW_COUNT)) rows.push({ kind: "entry", event: item, cat }); const rem = items.length - PREVIEW_COUNT; if (rem > 0) rows.push({ kind: "show_more", cat, remaining: rem }); }
+    if (expanded[cat]) {
+      if (!items.length) {
+        rows.push({ kind: "cat_empty", cat });
+      } else {
+        for (const item of items) rows.push({ kind: "entry", event: item, cat });
+      }
+    } else {
+      if (!items.length) {
+        rows.push({ kind: "cat_empty", cat });
+      } else {
+        for (const item of items.slice(0, PREVIEW_COUNT)) rows.push({ kind: "entry", event: item, cat });
+        const rem = items.length - PREVIEW_COUNT; if (rem > 0) rows.push({ kind: "show_more", cat, remaining: rem });
+      }
+    }
   }
   return rows;
 }
@@ -65,8 +78,14 @@ function drawContentRows(rows: Row[], sel: number, scrollTop: number, vis: numbe
   for (let i = 0; i < vis; i++) {
     out += at(start + i, 1) + clr(); const row = rows[scrollTop + i]; if (!row) continue; const active = (scrollTop + i) === sel;
     if (row.kind === "cat_header") {
-      const colorFn = CATEGORY_COLOR[row.cat]; const arrow = row.expanded ? "▾ " : "▸ "; const label = arrow + CATEGORY_LABEL[row.cat] + "  (" + row.count + ")";
+      const colorFn = CATEGORY_COLOR[row.cat]; const arrow = row.expanded ? "▾ " : "▸ ";
+      const countStr = row.count > 0 ? `  (${row.count})` : "  (empty)";
+      const label = arrow + CATEGORY_LABEL[row.cat] + countStr;
       out += active ? chalk.bgWhite.black.bold(label.padEnd(cols)) : colorFn(label);
+    } else if (row.kind === "cat_empty") {
+      const colorFn = CATEGORY_COLOR[row.cat];
+      const label = `    ${chalk.dim(CATEGORY_EMPTY[row.cat])}`;
+      out += active ? chalk.bgWhite.black.bold(label.padEnd(cols)) : label;
     } else if (row.kind === "show_more") {
       const colorFn = CATEGORY_COLOR[row.cat]; const label = `    ↓ ${row.remaining} more — press enter to show`;
       out += active ? chalk.bgWhite.black.bold(label.padEnd(cols)) : colorFn(label);
@@ -103,15 +122,15 @@ export function showGeneralHistory(onBack: () => void): void {
   events = events.filter(e => e.kind !== "command" || liveCmds.has(e.label)); persist();
 
   const stdin = process.stdin;
-  let active = true;
   const expanded: Record<Category, boolean> = { commands: false, file_mutations: false, trash_ops: false };
   let rows = buildRows(events, expanded); let sel = 0; let scrollTop = 0;
 
   function entLabel(): string {
-    if (!rows.length) return "Expand/Detail";
+    if (!rows.length) return "Expand";
     const row = rows[sel];
     if (row.kind === "cat_header") return row.cat === "commands" ? "Detail" : "Expand";
-    return "Detail";
+    if (row.kind === "entry") return "Detail";
+    return "Expand";
   }
 
   function NAV(): NavRows {
@@ -127,13 +146,12 @@ export function showGeneralHistory(onBack: () => void): void {
   function start(): number { return NR + 2; }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
   function rebuild(): void { rows = buildRows(events, expanded); sel = Math.min(sel, Math.max(0, rows.length - 1)); adjustScroll(); }
-  function buildLeft(): string { return `Activity  ${events.length} event${events.length === 1 ? "" : "s"}`; }
-  function buildRight(): string { if (rows.length <= vis()) return ""; const more = rows.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
-  function fullDraw(): void {
-    drawNavbar(NAV());
-    drawContentRows(rows, sel, scrollTop, vis(), start());
-    drawBottomBar(buildLeft(), buildRight());
+  function buildLeft(): string {
+    if (!events.length) return "Activity  (no events yet)";
+    return `Activity  ${events.length} event${events.length === 1 ? "" : "s"}`;
   }
+  function buildRight(): string { if (rows.length <= vis()) return ""; const more = rows.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
+  function fullDraw(): void { drawNavbar(NAV()); drawContentRows(rows, sel, scrollTop, vis(), start()); drawBottomBar(buildLeft(), buildRight()); }
   function onResize(): void { clearScreen(); adjustScroll(); fullDraw(); }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); clearScreen(); exitAlt(); }
   function exit(): void { cleanup(); setTimeout(onBack, 20); }
@@ -158,12 +176,21 @@ export function showGeneralHistory(onBack: () => void): void {
     function cmdVis(): number { return Math.max(1, R() - cmdNR - 2); }
     function cmdStart(): number { return cmdNR + 2; }
     function cmdAdjust(): void { const v = cmdVis(); if (cmdSel < cmdScroll) cmdScroll = cmdSel; if (cmdSel >= cmdScroll + v) cmdScroll = cmdSel - v + 1; }
-    function cmdBuildLeft(): string { let s = `Commands  ${cmdEvents.length}`; if (cmdSelected.size) s += chalk.magenta(`  ${cmdSelected.size} sel`); return s; }
+    function cmdBuildLeft(): string {
+      let s = `Commands  ${cmdEvents.length}`;
+      if (cmdSelected.size) s += chalk.magenta(`  ${cmdSelected.size} sel`);
+      return s;
+    }
 
     function drawCmd(): void {
       const v = cmdVis(); const s = cmdStart(); const cols = C();
       drawNavbar(CMD_NAV());
       let out = "";
+      if (!cmdEvents.length) {
+        out += at(s, 1) + clr() + chalk.dim("  (no commands yet)");
+        for (let i = 1; i < v; i++) out += at(s + i, 1) + clr();
+        w(out); drawBottomBar(cmdBuildLeft(), ""); return;
+      }
       for (let i = 0; i < v; i++) {
         out += at(s + i, 1) + clr(); const e = cmdEvents[cmdScroll + i]; if (!e) continue;
         const active = (cmdScroll + i) === cmdSel; const isSel = cmdSelected.has(e.id); const ts = fmtTime(e.ts);
@@ -199,14 +226,7 @@ export function showGeneralHistory(onBack: () => void): void {
       if (raw.startsWith("\u001b")) return;
       if (raw === " ") { toggleCmdSel(); return; }
       if (raw === "a") { selectAllCmd(); return; }
-      if (raw === "\r") {
-        const e = cmdEvents[cmdSel];
-        if (e) {
-          backFromCmd();
-          setTimeout(() => {}, 0);
-        }
-        return;
-      }
+      if (raw === "\r") { const e = cmdEvents[cmdSel]; if (e) { backFromCmd(); } return; }
       if (raw === "x" || raw === "\x7f") { deleteSelected(); return; }
       if (raw === "d") { deleteAllCmd(); return; }
     }
@@ -219,6 +239,7 @@ export function showGeneralHistory(onBack: () => void): void {
       if (row.cat === "commands") { openCommandEdit(); return; }
       expanded[row.cat] = !expanded[row.cat]; rebuild(); fullDraw(); return;
     }
+    if (row.kind === "cat_empty") return;
     if (row.kind === "show_more") { expanded[row.cat] = true; rebuild(); fullDraw(); return; }
     if (row.kind === "entry") showDetail(row.event);
   }

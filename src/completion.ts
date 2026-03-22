@@ -42,7 +42,7 @@ export function commonPrefix(strs: string[]): string {
 export function showPicker(candidates: string[], onSelect: (chosen: string) => void, onCancel: () => void, onHistory?: () => void): void {
   if (!candidates.length) return onCancel();
   const stdin = process.stdin;
-  let active = true; let selIdx = 0; let scrollTop = 0;
+  let selIdx = 0; let scrollTop = 0;
 
   function NAV(): NavItem[] {
     const items: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Select"}, { key: "Esc", label: "Cancel" }];
@@ -58,6 +58,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   function adjustScroll(): void { const row = Math.floor(selIdx / pr()); const v = vis(); if (row < scrollTop) scrollTop = row; if (row >= scrollTop + v) scrollTop = row - v + 1; }
 
   function buildLeft(): string {
+    if (!candidates.length) return "No matches";
     const dirs = candidates.filter(c => c.endsWith("/")).length; const cmds = candidates.length - dirs;
     const parts: string[] = []; if (dirs > 0) parts.push(`${dirs}d`); if (cmds > 0) parts.push(`${cmds} item${cmds === 1 ? "" : "s"}`);
     if (!parts.length) parts.push(`${candidates.length} items`); return parts.join("  ");
@@ -66,6 +67,11 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
 
   function drawContent(): void {
     const start = NR + 2; const p = pr(); const c = cw(); const v = vis(); let out = "";
+    if (!candidates.length) {
+      out += at(start, 1) + clr() + chalk.dim("  (no matches)");
+      for (let i = 1; i < v; i++) out += at(start + i, 1) + clr();
+      w(out); return;
+    }
     for (let row = 0; row < v; row++) {
       out += at(start + row, 1) + clr(); const fr = scrollTop + row; let line = " ";
       for (let col = 0; col < p; col++) {
