@@ -114,9 +114,24 @@ const TEXT_COLORS: Record<string, (s:string)=>string> = {
 };
 function lineColor(ext: string): (s:string)=>string { return TEXT_COLORS[ext] ?? chalk.white; }
 
+function truncateAnsi(str: string, maxVisible: number): string {
+  let visible = 0; let out = ""; let i = 0;
+  while (i < str.length) {
+    if (str[i] === "\x1b") {
+      const end = str.indexOf("m", i);
+      if (end !== -1) { out += str.slice(i, end + 1); i = end + 1; continue; }
+    }
+    if (visible >= maxVisible) break;
+    out += str[i]; visible++; i++;
+  }
+  return out + chalk.reset("");
+}
+
 function padLine(l: string, width: number): string {
   const vl = visibleLen(l);
-  return vl < width ? l + " ".repeat(width - vl) : l;
+  if (vl > width) return truncateAnsi(l, width - 1) + chalk.dim("…");
+  if (vl < width) return l + " ".repeat(width - vl);
+  return l;
 }
 
 function renderMeta(meta: FileMeta, width: number): string[] {
@@ -214,10 +229,8 @@ function renderContent(content: PreviewContent, width: number): string[] {
     return out;
   }
   for (let i = 0; i < rawLines.length; i++) {
-    const num  = chalk.dim(String(i+1).padStart(4) + " ");
-    const maxW = Math.max(0, width - 6);
-    const text = rawLines[i].length > maxW ? rawLines[i].slice(0, maxW-1) + "…" : rawLines[i];
-    out.push(padLine(num + colorFn(text), width));
+    const num = chalk.dim(String(i+1).padStart(4) + " ");
+    out.push(padLine(num + colorFn(rawLines[i]), width));
   }
   return out;
 }
@@ -266,10 +279,8 @@ export function drawSplitPreview(
 
   let out = "";
   for (let i = 0; i < visH; i++) {
-    const line   = lines[state.scrollTop + i] ?? "";
-    const vl     = visibleLen(line);
-    const padded = vl < pvW ? line + " ".repeat(pvW - vl) : line;
-    out += at(startR + i, divCol) + chalk.dim("│") + padded;
+    const line = lines[state.scrollTop + i] ?? "";
+    out += at(startR + i, divCol) + chalk.dim("│") + padLine(line, pvW);
   }
   w(out);
 }
@@ -291,9 +302,7 @@ export function drawOverlayPreview(
   out += at(startR, 1) + chalk.dim("─".repeat(cols));
   for (let i = 0; i < visH; i++) {
     const line = lines[state.scrollTop + i] ?? "";
-    const vl   = visibleLen(line);
-    const pad  = Math.max(0, cols - 2 - vl);
-    out += at(startR + 1 + i, 1) + " " + line + " ".repeat(pad) + " ";
+    out += at(startR + 1 + i, 1) + " " + padLine(line, cols - 2) + " ";
   }
   w(out);
 }

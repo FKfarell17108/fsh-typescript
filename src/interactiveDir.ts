@@ -110,10 +110,52 @@ export function interactiveDir(onExit: () => void): void {
   function syncBrowseScroll(): void {
     const metaLines = getMetaLineCount(pvState.content!);
     const totalOffset = 1 + metaLines;
-    const visH = isSplit() ? Math.max(1, R() - NR() - 2 - 1) : Math.max(1, OVERLAY_LINES - 1);
+    const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
     const targetLine = totalOffset + browseIdx;
     if (targetLine < pvState.scrollTop) pvState.scrollTop = targetLine;
     if (targetLine >= pvState.scrollTop + visH) pvState.scrollTop = targetLine - visH + 1;
+  }
+
+  function doMkdir(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showInlineInput(stdin, "New folder:", "",
+      (name) => {
+        process.stdout.on("resize", onResize);
+        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
+        const full = path.join(cwd, name);
+        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
+        try {
+          fs.mkdirSync(full, { recursive: true });
+          allEntries = loadDirs(cwd); entries = visibleEntries();
+          const idx = entries.findIndex(e => e.name === name);
+          selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
+          adjustScroll(); refreshPreview();
+          showStatus(`  Created folder: ${name}`);
+          fullRedraw();
+        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
+        stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
+  function doTouch(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showInlineInput(stdin, "New file:", "",
+      (name) => {
+        process.stdout.on("resize", onResize);
+        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
+        const full = path.join(cwd, name);
+        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
+        try {
+          fs.writeFileSync(full, "", "utf8");
+          showStatus(`  Created file: ${name}`);
+        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); stdin.on("data", onKey); return; }
+        allEntries = loadDirs(cwd); entries = visibleEntries();
+        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
   }
 
   function browseNavigate(delta: number): void {
@@ -151,11 +193,24 @@ export function interactiveDir(onExit: () => void): void {
   function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
   function vis(): number {
-    const base = Math.max(1, R() - NR() - 2);
+    const base = Math.max(1, R() - NR() - 3);
     if (!isSplit() && pvState.content) return Math.max(1, base - 14);
     return base;
   }
   function adjustScroll(): void { const row = Math.floor(selIdx / pr()); const v = vis(); if (row < scrollTop) scrollTop = row; if (row >= scrollTop + v) scrollTop = row - v + 1; }
+
+  function drawMiniBar(): void {
+    if (browseMode) { w(at(R() - 1, 1) + clr()); return; }
+    const cols = C();
+    const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
+    const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
+    const nPart = nKey + chalk.dim(" New Folder");
+    const tPart = tKey + chalk.dim(" New File");
+    const gap   = "    ";
+    const line  = "  " + nPart + gap + tPart;
+    const vl    = visibleLen(line);
+    w(at(R() - 1, 1) + clr() + line + (vl < cols ? chalk.dim(" ".repeat(cols - vl)) : ""));
+  }
 
   function navigate(key: string): boolean {
     const p = pr(); const total = entries.length; if (!total) return false;
@@ -188,17 +243,24 @@ export function interactiveDir(onExit: () => void): void {
     const modeStr = browseMode
       ? chalk.cyan(" [browse]")
       : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
-    if (tr() <= vis()) return modeStr;
+    const pgHint  = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
+    if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
-    return (more > 0 ? `↓ ${more} more` : "end") + modeStr;
+    return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
   }
   function drawBottom(): void {
     if (statusMsg) { w(at(R(), 1) + clr() + statusMsg); return; }
-    drawBottomBar(buildLeft(), buildRight());
+    drawMiniBar();
+    const cols = C();
+    const ls   = buildLeft()  ? "  " + buildLeft()  : "";
+    const rs   = buildRight() ? buildRight() + "  " : "";
+    const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
+    w(at(R(), 1) + clr() + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
   }
   function showStatus(msg: string, isErr = false): void {
     if (statusTimer) clearTimeout(statusTimer);
-    statusMsg = isErr ? chalk.red(msg) : chalk.green(msg); drawBottom();
+    statusMsg = isErr ? chalk.red(msg) : chalk.green(msg);
+    w(at(R(), 1) + clr() + statusMsg);
     statusTimer = setTimeout(() => { statusMsg = ""; drawBottom(); statusTimer = null; }, 2000);
   }
 
@@ -362,6 +424,8 @@ export function interactiveDir(onExit: () => void): void {
     if (k === "\u001b") { if (getClipboard()) { clearClipboard(); render(); } else if (selected.size > 0) { selected.clear(); render(); } else { process.chdir(cwd); exit(); } return; }
     if (k === "h") { openLog(); return; }
     if (k === "o") { if (pvState.content?.kind === "dir") { enterBrowse(); } return; }
+    if (k === "n") { doMkdir(); return; }
+    if (k === "t") { doTouch(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
     if (k === "\r") { if (entries.length) goInto(entries[selIdx].name); return; }
     if (k === "\t") { goUp(); return; }

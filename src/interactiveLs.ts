@@ -173,11 +173,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function syncBrowseScroll(): void {
-    const entries = getDirEntries(pvState.content!);
-    const metaLines = getMetaLineCount(pvState.content!);
+    const metaLines  = getMetaLineCount(pvState.content!);
     const totalOffset = 1 + metaLines;
     const visH = isSplit()
-      ? Math.max(1, R() - NR() - 2 - 1)
+      ? Math.max(1, R() - NR() - 3 - 1)
       : Math.max(1, OVERLAY_LINES - 1);
     const targetLine = totalOffset + browseIdx;
     if (targetLine < pvState.scrollTop) pvState.scrollTop = targetLine;
@@ -244,9 +243,22 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
   function vis(): number {
-    const base = Math.max(1, R() - NR() - 2);
+    const base = Math.max(1, R() - NR() - 3);
     if (!isSplit() && pvState.content) return Math.max(1, base - 14);
     return base;
+  }
+
+  function drawMiniBar(): void {
+    if (browseMode) { w(at(R() - 1, 1) + clr()); return; }
+    const cols = C();
+    const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
+    const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
+    const nPart = nKey + chalk.dim(" New Folder");
+    const tPart = tKey + chalk.dim(" New File");
+    const gap   = "    ";
+    const line  = "  " + nPart + gap + tPart;
+    const vl    = visibleLen(line);
+    w(at(R() - 1, 1) + clr() + line + (vl < cols ? chalk.dim(" ".repeat(cols - vl)) : ""));
   }
 
   function adjustScroll(): void {
@@ -297,18 +309,24 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const modeStr = browseMode
       ? chalk.cyan(" [browse]")
       : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
-    if (tr() <= vis()) return modeStr;
+    const pgHint  = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
+    if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
-    return (more > 0 ? `↓ ${more} more` : "end") + modeStr;
+    return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
   }
   function drawBottom(): void {
     if (statusMsg) { w(at(R(), 1) + clr() + statusMsg); return; }
-    drawBottomBar(buildLeft(), buildRight());
+    drawMiniBar();
+    const cols  = C();
+    const ls    = buildLeft()  ? "  " + buildLeft()  : "";
+    const rs    = buildRight() ? buildRight() + "  " : "";
+    const gap   = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
+    w(at(R(), 1) + clr() + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
   }
   function showStatus(msg: string, isErr = false): void {
     if (statusTimer) clearTimeout(statusTimer);
     statusMsg = isErr ? chalk.red(msg) : chalk.green(msg);
-    drawBottom();
+    w(at(R(), 1) + clr() + statusMsg);
     statusTimer = setTimeout(() => { statusMsg = ""; drawBottom(); statusTimer = null; }, 2000);
   }
 
@@ -491,6 +509,47 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     stdin.on("data", onEditorKey); clearScreen(); drawEditor();
   }
 
+  function doMkdir(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showInlineInput(stdin, "New folder:", "",
+      (name) => {
+        process.stdout.on("resize", onResize);
+        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
+        const full = path.join(currentDir, name);
+        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
+        try {
+          fs.mkdirSync(full, { recursive: true });
+          reload(name);
+          showStatus(`  Created folder: ${name}`);
+          fullRedraw();
+        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
+        stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
+  function doTouch(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showInlineInput(stdin, "New file:", "",
+      (name) => {
+        process.stdout.on("resize", onResize);
+        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
+        const full = path.join(currentDir, name);
+        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
+        try {
+          fs.mkdirSync(path.dirname(full), { recursive: true });
+          fs.writeFileSync(full, "", "utf8");
+          reload(name);
+          showStatus(`  Created file: ${name}`);
+          fullRedraw();
+        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
+        stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function openLog(): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); });
@@ -525,6 +584,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       }
       return;
     }
+    if (k === "n") { doMkdir(); return; }
+    if (k === "t") { doTouch(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
     if (k === "\t")  { goParent(); return; }
     if (k === " ")   { toggleSelect(); render(); return; }
