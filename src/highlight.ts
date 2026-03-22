@@ -94,19 +94,19 @@ const LONG_FLAGS_WITH_VALUES = new Set([
 
 function cmdColor(cmd: string): string {
   const base = cmd.split("/").pop() ?? cmd;
-  if (BUILTINS.has(base))       return chalk.greenBright.bold(cmd);
-  if (getAllAliases().has(base)) return chalk.green(cmd);
-  if (CMD_EDITORS.has(base))    return chalk.hex("#C792EA").bold(cmd);
-  if (CMD_GIT.has(base))        return chalk.hex("#F78C6C").bold(cmd);
-  if (CMD_NODE.has(base))       return chalk.hex("#80CBC4").bold(cmd);
-  if (CMD_PYTHON.has(base))     return chalk.hex("#FFCB6B").bold(cmd);
-  if (CMD_SYSTEM.has(base))     return chalk.hex("#FF5572").bold(cmd);
-  if (CMD_NETWORK.has(base))    return chalk.hex("#89DDFF").bold(cmd);
-  if (CMD_FILE_OPS.has(base))   return chalk.hex("#C3E88D").bold(cmd);
-  if (CMD_DOCKER.has(base))     return chalk.hex("#4FC3F7").bold(cmd);
-  if (CMD_BUILD.has(base))      return chalk.hex("#F9A825").bold(cmd);
-  if (CMD_SHELL.has(base))      return chalk.hex("#A6ACCD").bold(cmd);
-  return chalk.green(cmd);
+  if (BUILTINS.has(base))       return chalk.hex("#73D997")(cmd);
+  if (getAllAliases().has(base)) return chalk.hex("#A8E6A3")(cmd);
+  if (CMD_EDITORS.has(base))    return chalk.hex("#D4A9F5")(cmd);
+  if (CMD_GIT.has(base))        return chalk.hex("#FFA878")(cmd);
+  if (CMD_NODE.has(base))       return chalk.hex("#6EC6BF")(cmd);
+  if (CMD_PYTHON.has(base))     return chalk.hex("#FFD580")(cmd);
+  if (CMD_SYSTEM.has(base))     return chalk.hex("#FF7B8A")(cmd);
+  if (CMD_NETWORK.has(base))    return chalk.hex("#70D4FF")(cmd);
+  if (CMD_FILE_OPS.has(base))   return chalk.hex("#AEDD87")(cmd);
+  if (CMD_DOCKER.has(base))     return chalk.hex("#5BC8F5")(cmd);
+  if (CMD_BUILD.has(base))      return chalk.hex("#F5C542")(cmd);
+  if (CMD_SHELL.has(base))      return chalk.hex("#B0B8D8")(cmd);
+  return chalk.hex("#73D997")(cmd);
 }
 
 function subcommandColor(parent: string, sub: string): string {
@@ -114,31 +114,31 @@ function subcommandColor(parent: string, sub: string): string {
   if (CMD_GIT.has(base)) {
     if (GIT_SUBCOMMANDS.has(sub)) {
       const destructive = new Set(["reset", "rm", "clean", "rebase", "force"]);
-      if (destructive.has(sub)) return chalk.hex("#FF5572").bold(sub);
+      if (destructive.has(sub)) return chalk.hex("#FF7B8A")(sub);
       const creative = new Set(["init", "clone", "add", "commit", "push", "tag"]);
-      if (creative.has(sub)) return chalk.hex("#C3E88D").bold(sub);
-      return chalk.hex("#FFCB6B").bold(sub);
+      if (creative.has(sub)) return chalk.hex("#AEDD87")(sub);
+      return chalk.hex("#FFD580")(sub);
     }
   }
   if (CMD_NODE.has(base) || base === "npx") {
     if (NPM_SUBCOMMANDS.has(sub)) {
-      if (sub === "install" || sub === "ci") return chalk.hex("#80CBC4").bold(sub);
-      if (sub === "uninstall" || sub === "rm") return chalk.hex("#FF5572").bold(sub);
-      if (sub === "run" || sub === "start") return chalk.hex("#C3E88D").bold(sub);
-      return chalk.hex("#FFCB6B").bold(sub);
+      if (sub === "install" || sub === "ci") return chalk.hex("#6EC6BF")(sub);
+      if (sub === "uninstall" || sub === "rm") return chalk.hex("#FF7B8A")(sub);
+      if (sub === "run" || sub === "start") return chalk.hex("#AEDD87")(sub);
+      return chalk.hex("#FFD580")(sub);
     }
   }
   if (CMD_DOCKER.has(base)) {
     if (DOCKER_SUBCOMMANDS.has(sub)) {
-      if (sub === "rm" || sub === "rmi" || sub === "stop") return chalk.hex("#FF5572").bold(sub);
-      if (sub === "run" || sub === "build" || sub === "start") return chalk.hex("#C3E88D").bold(sub);
-      return chalk.hex("#4FC3F7").bold(sub);
+      if (sub === "rm" || sub === "rmi" || sub === "stop") return chalk.hex("#FF7B8A")(sub);
+      if (sub === "run" || sub === "build" || sub === "start") return chalk.hex("#AEDD87")(sub);
+      return chalk.hex("#5BC8F5")(sub);
     }
   }
   if (SUDO_LIKE.has(base)) {
-    return chalk.hex("#FF5572").bold(sub);
+    return chalk.hex("#FF7B8A")(sub);
   }
-  return chalk.hex("#FFCB6B")(sub);
+  return chalk.hex("#FFD580")(sub);
 }
 
 function flagColor(flag: string): string {
@@ -147,38 +147,40 @@ function flagColor(flag: string): string {
       flag.includes("force") || flag.includes("hard") ||
       flag.includes("delete") || flag.includes("remove") ||
       flag.includes("purge") || flag.includes("nuke")
-    ) return chalk.hex("#FF5572")(flag);
+    ) return chalk.hex("#FF7B8A")(flag);
     if (
       flag.includes("help") || flag.includes("version") ||
       flag.includes("verbose") || flag.includes("dry-run")
-    ) return chalk.hex("#89DDFF")(flag);
+    ) return chalk.hex("#70D4FF")(flag);
     if (
       flag.includes("output") || flag.includes("format") ||
       flag.includes("config") || flag.includes("file")
-    ) return chalk.hex("#FFCB6B")(flag);
-    return chalk.hex("#C792EA")(flag);
+    ) return chalk.hex("#FFB347")(flag);
+    return chalk.hex("#C9A0F0")(flag);
   }
   if (flag.startsWith("-")) {
-    if (flag.includes("f") || flag.includes("r") && flag.length === 3)
-      return chalk.hex("#FF5572")(flag);
+    if (flag.includes("f") || (flag.includes("r") && flag.length === 3))
+      return chalk.hex("#FF7B8A")(flag);
     if (flag.includes("v") || flag.includes("h"))
-      return chalk.hex("#89DDFF")(flag);
-    return chalk.yellow(flag);
+      return chalk.hex("#70D4FF")(flag);
+    return chalk.hex("#FFD580")(flag);
   }
-  return chalk.yellow(flag);
+  return chalk.hex("#FFD580")(flag);
 }
 
 function numberArgColor(val: string): string {
-  return chalk.hex("#F78C6C")(val);
+  return chalk.hex("#FF9E64")(val);
 }
+
+type FsKind = "dir" | "dir_hidden" | "file" | "file_hidden" | "none";
 
 function pathArgColor(full: string, kind: FsKind, hidden: boolean): string {
   switch (kind) {
-    case "dir":         return hidden ? chalk.cyan(full) : chalk.blueBright.bold(full);
-    case "dir_hidden":  return chalk.cyan(full);
-    case "file":        return hidden ? chalk.gray(full) : chalk.whiteBright(full);
-    case "file_hidden": return chalk.gray(full);
-    case "none":        return chalk.hex("#FF5572").dim(full);
+    case "dir":         return chalk.hex("#6BBFFF")(full);
+    case "dir_hidden":  return chalk.hex("#4A90B8")(full);
+    case "file":        return hidden ? chalk.hex("#888FA8")(full) : chalk.hex("#D8DEF0")(full);
+    case "file_hidden": return chalk.hex("#666D88")(full);
+    case "none":        return chalk.hex("#FF7B8A").dim(full);
   }
 }
 
@@ -219,8 +221,6 @@ function commandExists(cmd: string): boolean {
   return getExecutables().has(base);
 }
 
-type FsKind = "dir" | "dir_hidden" | "file" | "file_hidden" | "none";
-
 function resolveFsKind(word: string): FsKind {
   let resolved = word;
   const home   = process.env.HOME ?? "";
@@ -248,7 +248,7 @@ function colorArg(word: string, prevFlag: string): string {
   if (isNumeric(word)) return numberArgColor(word);
 
   if (prevFlag && LONG_FLAGS_WITH_VALUES.has(prevFlag)) {
-    return chalk.hex("#E5A050")(word);
+    return chalk.hex("#FFB347")(word);
   }
 
   const looksLikePath =
@@ -264,7 +264,7 @@ function colorArg(word: string, prevFlag: string): string {
     }
   }
 
-  return chalk.whiteBright(word);
+  return chalk.hex("#C8CEE8")(word);
 }
 
 type TokenType =
@@ -390,7 +390,7 @@ export function highlight(input: string): string {
       case "command": {
         lastCmd  = tok.value;
         lastFlag = "";
-        out += commandExists(tok.value) ? cmdColor(tok.value) : chalk.red(tok.value);
+        out += commandExists(tok.value) ? cmdColor(tok.value) : chalk.hex("#FF6B7A")(tok.value);
         break;
       }
       case "subcommand": {
@@ -407,27 +407,27 @@ export function highlight(input: string): string {
         break;
       }
       case "operator": {
-        out += chalk.cyanBright.bold(tok.value);
+        out += chalk.hex("#56D4D4")(tok.value);
         break;
       }
       case "redirect": {
-        out += chalk.cyan(tok.value);
+        out += chalk.hex("#F0A05A")(tok.value);
         break;
       }
       case "string_d": {
-        out += chalk.hex("#E5A050")(tok.value);
+        out += chalk.hex("#E8A062")(tok.value);
         break;
       }
       case "string_s": {
-        out += chalk.hex("#C3E88D")(tok.value);
+        out += chalk.hex("#A8D672")(tok.value);
         break;
       }
       case "incomplete_s": {
-        out += chalk.hex("#E5A050").dim(tok.value);
+        out += chalk.hex("#C07840")(tok.value);
         break;
       }
       case "variable": {
-        out += chalk.magentaBright.bold(tok.value);
+        out += chalk.hex("#E070C8")(tok.value);
         break;
       }
       case "arg": {
