@@ -44,7 +44,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   const stdin = process.stdin; let selIdx = 0; let scrollTop = 0;
 
   function NAV(): NavItem[] {
-    const items: NavItem[] = [{ key: "↑↓←→", label: "Navigate" }, { key: "Ent", label: "Select" }, { key: "Esc", label: "Cancel" }];
+    const items: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Select" }, { key: "Esc", label: "Cancel" }];
     if (onHistory) items.push({ key: "Tab", label: "History" });
     return items;
   }
@@ -78,7 +78,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
     }
     w(out);
   }
-  function render(): void { drawNavbar(NAV(), NAV().length); drawContent(); drawBottomBar(buildLeft(), buildRight()); }
+  function render(): void { drawNavbar([NAV()]); drawContent(); drawBottomBar(buildLeft(), buildRight()); }
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
   function exit(chosen?: string): void { cleanup(); setTimeout(() => { if (chosen !== undefined) onSelect(chosen); else onCancel(); }, 20); }

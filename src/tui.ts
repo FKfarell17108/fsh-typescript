@@ -11,6 +11,7 @@ export const FOOTER_ROWS = 0;
 export function getNR(): number { return 0; }
 
 export type NavItem = { key: string; label: string; };
+export type NavRows = NavItem[][];
 
 export function visibleLen(str: string): number {
   return str.replace(/\x1b\[[0-9;]*[\x40-\x7e]/g, "").length;
@@ -35,82 +36,48 @@ export function padOrTrim(str: string, width: number): string {
 function renderNavRow(items: NavItem[], cols: number): string {
   if (items.length === 0) return chalk.bgBlack(" ".repeat(cols));
 
-  const n        = items.length;
-  const keyW     = Math.max(items.reduce((m, it) => Math.max(m, it.key.length), 0), 3);
+  const n         = items.length;
+  const keyW      = Math.max(items.reduce((m, it) => Math.max(m, it.key.length), 0), 3);
   const keyBlockW = keyW + 2;
-  const sepCount  = n - 1;
-  const usableW   = cols - sepCount;
-  const slotW     = Math.floor(usableW / n);
-  const lastSlotW = usableW - slotW * (n - 1);
-  const sep       = chalk.dim.bgBlack("│");
+  const slotW     = Math.floor(cols / n);
+  const lastSlotW = cols - slotW * (n - 1);
   let   out       = "";
 
   for (let i = 0; i < n; i++) {
     const slotWidth = i === n - 1 ? lastSlotW : slotW;
     const { key, label } = items[i];
-
     const keyPad   = Math.max(0, keyW - key.length);
     const keyLeft  = Math.floor(keyPad / 2);
     const keyRight = keyPad - keyLeft;
     const keyStr   = " ".repeat(keyLeft) + key + " ".repeat(keyRight);
     const keyBlock = chalk.bgWhite.black.bold(` ${keyStr} `);
-
-    const labelAvail = Math.max(0, slotWidth - keyBlockW - 1);
-    const truncated  = label.length > labelAvail
-      ? label.slice(0, Math.max(0, labelAvail - 1)) + "…"
+    const labAvail = Math.max(0, slotWidth - keyBlockW - 1);
+    const truncated = label.length > labAvail
+      ? label.slice(0, Math.max(0, labAvail - 1)) + "…"
       : label;
-    const labelPad = Math.max(0, labelAvail - truncated.length);
-
-    out += keyBlock + chalk.bgBlack.white(" " + truncated + " ".repeat(labelPad));
-    if (i < n - 1) out += sep;
+    const fill = Math.max(0, labAvail - truncated.length);
+    out += keyBlock + chalk.bgBlack.white(" " + truncated + " ".repeat(fill));
   }
 
   return out;
 }
 
-export type NavRows = NavItem[][];
-
-export function drawNavbar(rows: NavRows | NavItem[], split?: number): void {
+export function drawNavbar(rows: NavRows): void {
   const cols = C();
   let   out  = "";
-  let   rowArr: NavItem[][];
 
-  if (Array.isArray(rows) && rows.length > 0 && !Array.isArray(rows[0])) {
-    const flat    = rows as NavItem[];
-    const splitAt = split !== undefined
-      ? Math.max(1, Math.min(split, flat.length))
-      : Math.ceil(flat.length / 2);
-    const r1 = flat.slice(0, splitAt);
-    const r2 = flat.slice(splitAt);
-    rowArr = r2.length ? [r1, r2] : [r1];
-  } else {
-    rowArr = rows as NavItem[][];
-  }
-
-  if (rowArr.length === 0) {
+  if (rows.length === 0) {
     out += at(1, 1) + clr() + chalk.bgBlack(" ".repeat(cols));
     out += at(2, 1) + clr() + chalk.dim("─".repeat(cols));
     w(out);
     return;
   }
 
-  for (let r = 0; r < rowArr.length; r++) {
-    out += at(r + 1, 1) + clr() + renderNavRow(rowArr[r], cols);
+  for (let r = 0; r < rows.length; r++) {
+    out += at(r + 1, 1) + clr() + renderNavRow(rows[r], cols);
   }
-  out += at(rowArr.length + 1, 1) + clr() + chalk.dim("─".repeat(cols));
-
+  out += at(rows.length + 1, 1) + clr() + chalk.dim("─".repeat(cols));
   w(out);
-}
-
-export function nrFromRows(rows: NavRows | NavItem[], split?: number): number {
-  if (Array.isArray(rows) && rows.length > 0 && !Array.isArray(rows[0])) {
-    const flat    = rows as NavItem[];
-    const splitAt = split !== undefined
-      ? Math.max(1, Math.min(split, flat.length))
-      : Math.ceil(flat.length / 2);
-    return flat.length > splitAt ? 3 : 2;
-  }
-  return (rows as NavItem[][]).length + 1;
 }
 
 export function drawBottomBar(left: string, right: string): void {

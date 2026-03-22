@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import { loadMeta, TrashEntry, restoreFromTrash, deleteFromTrash, deleteAllFromTrash, TRASH_DIR } from "./trash";
-import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 
 export function interactiveTrash(onExit: () => void): void {
   const stdin = process.stdin;
@@ -10,21 +10,22 @@ export function interactiveTrash(onExit: () => void): void {
   if (!entries.length) { console.log(chalk.gray("  (trash is empty)")); return onExit(); }
   let sel = 0; let scrollTop = 0; let selected = new Set<string>();
 
-  const ROW1: NavItem[] = [
-    { key: "↑↓",  label: "Navigate"   },
-    { key: "Spc", label: "Select"      },
-    { key: "A",   label: "Select All"  },
-    { key: "Ent", label: "Preview"     },
-    { key: "Esc", label: "Deselect/Quit" },
-  ];
-  function ROW2(): NavItem[] {
+  function NAV(): NavRows {
     return [
-      { key: "R", label: "Restore"        },
-      { key: "X", label: "Delete Forever" },
-      { key: "D", label: "Empty Trash"    },
+      [
+        { key: "Nav", label: "Navigate"  },
+        { key: "Spc", label: "Select"    },
+        { key: "A",   label: "Select All"},
+        { key: "Ent", label: "Preview"   },
+      ],
+      [
+        { key: "R",   label: "Restore"        },
+        { key: "X",   label: "Delete Forever" },
+        { key: "D",   label: "Empty Trash"    },
+        { key: "Esc", label: selected.size > 0 ? "Deselect" : "Quit" },
+      ],
     ];
   }
-  function NAV() { return [ROW1, ROW2()]; }
   const NR = 3;
 
   function vis(): number { return Math.max(1, R() - NR - 2); }
@@ -93,7 +94,7 @@ export function interactiveTrash(onExit: () => void): void {
     const confirmNav: NavItem[] = [{ key: "Y", label: "Delete Forever (cannot undo)" }, { key: "N/Esc", label: "Cancel" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
-      drawNavbar(confirmNav, confirmNav.length);
+      drawNavbar([confirmNav]);
       let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
@@ -126,7 +127,7 @@ export function interactiveTrash(onExit: () => void): void {
     const confirmNav: NavItem[] = [{ key: "Y", label: `Empty Trash (${total} items)` }, { key: "N/Esc", label: "Cancel" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
-      drawNavbar(confirmNav, confirmNav.length);
+      drawNavbar([confirmNav]);
       let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
@@ -152,7 +153,7 @@ export function interactiveTrash(onExit: () => void): void {
     ];
     function drawPreview(): void {
       const start = 3; const v = R() - 3;
-      drawNavbar(previewNav, previewNav.length);
+      drawNavbar([previewNav]);
       let out = ""; let ln = 0;
       function line(s: string) { if (ln >= v) return; out += at(start + ln, 1) + clr() + s; ln++; }
       line(chalk.bold((entry.isDir ? "  dir  " : "  file ") + entry.name)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
@@ -165,7 +166,7 @@ export function interactiveTrash(onExit: () => void): void {
       w(out); drawBottomBar(entry.name, "");
     }
     process.stdout.removeListener("resize", onResize);
-    const onPR = () => { clearScreen(); drawNavbar(previewNav, previewNav.length); drawPreview(); };
+    const onPR = () => { clearScreen(); drawNavbar([previewNav]); drawPreview(); };
     process.stdout.on("resize", onPR); stdin.removeAllListeners("data");
     function back(): void { process.stdout.removeListener("resize", onPR); stdin.removeAllListeners("data"); process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }
     function onPreviewKey(k: string): void {
@@ -174,7 +175,7 @@ export function interactiveTrash(onExit: () => void): void {
       if (k === "x") { process.stdout.removeListener("resize", onPR); stdin.removeAllListeners("data"); showConfirmDelete([entry], () => { process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }); return; }
       if (k === "o" && entry.isDir) { process.stdout.removeListener("resize", onPR); stdin.removeAllListeners("data"); browseDir(src, entry.name, stdin, () => { process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }); return; }
     }
-    stdin.on("data", onPreviewKey); clearScreen(); drawNavbar(previewNav, previewNav.length); drawPreview();
+    stdin.on("data", onPreviewKey); clearScreen(); drawNavbar([previewNav]); drawPreview();
   }
 
   function onResize(): void { fullRedraw(); }
@@ -199,7 +200,7 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
   let entries: { name: string; isDir: boolean }[] = [];
   try { entries = fs.readdirSync(dirPath, { withFileTypes: true }).map(e => ({ name: e.name, isDir: e.isDirectory() })).sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name)); } catch { onBack(); return; }
   let sel = 0; let scrollTop = 0;
-  const nav: NavItem[] = [{ key: "↑↓", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
+  const nav: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
@@ -215,7 +216,7 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
     w(out);
   }
   function buildRight(): string { if (entries.length <= vis()) return ""; const more = entries.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
-  function render(): void { drawNavbar(nav, nav.length); drawContent(); drawBottomBar(label, buildRight()); }
+  function render(): void { drawNavbar([nav]); drawContent(); drawBottomBar(label, buildRight()); }
   const onBR = () => { clearScreen(); adjustScroll(); render(); }; process.stdout.on("resize", onBR);
   function onKey(k: string): void {
     if (k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onKey); process.stdout.removeListener("resize", onBR); onBack(); return; }
@@ -241,7 +242,7 @@ function browseFile(filePath: string, name: string, stdin: NodeJS.ReadStream, on
     try { const fl = fs.readFileSync(filePath, "utf8").split("\n"); for (const f of fl.slice(0, v)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > v) line(chalk.gray(`  ... ${fl.length - v} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
     for (let i = ln; i < v; i++) out += at(start + i, 1) + clr(); w(out);
   }
-  function render(): void { drawNavbar(nav, nav.length); drawContent(); drawBottomBar(name, ""); }
+  function render(): void { drawNavbar([nav]); drawContent(); drawBottomBar(name, ""); }
   const onFR = () => { clearScreen(); render(); }; process.stdout.on("resize", onFR);
   function onKey(k: string): void { if (k === "\u001b" || k === "\u0003" || k === "q") { stdin.removeListener("data", onKey); process.stdout.removeListener("resize", onFR); onBack(); } }
   stdin.on("data", onKey); clearScreen(); render();

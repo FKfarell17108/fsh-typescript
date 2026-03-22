@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import chalk from "chalk";
-import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 
 export type GeneralEventKind = "command" | "copy" | "move" | "rename" | "trash" | "restore" | "delete" | "empty_trash";
 export type GeneralEvent = { id: string; kind: GeneralEventKind; label: string; detail: string; ts: number; };
@@ -106,21 +106,30 @@ export function showGeneralHistory(onBack: () => void): void {
   const expanded: Record<Category, boolean> = { commands: false, file_mutations: false, trash_ops: false };
   let rows = buildRows(events, expanded); let sel = 0; let scrollTop = 0;
 
-  const NAV: NavItem[] = [
-    { key: "↑↓", label: "Navigate"      },
-    { key: "Ent", label: "Expand/Detail" },
-    { key: "Esc", label: "Back"          },
-  ];
+  function entLabel(): string {
+    if (!rows.length) return "Expand/Detail";
+    const row = rows[sel];
+    if (row.kind === "cat_header") return row.cat === "commands" ? "Detail" : "Expand";
+    return "Detail";
+  }
 
-  function NR(): number { return 2; }
-  function vis(): number { return Math.max(1, R() - NR() - 2); }
-  function start(): number { return NR() + 2; }
+  function NAV(): NavRows {
+    return [[
+      { key: "Nav", label: "Navigate" },
+      { key: "Ent", label: entLabel() },
+      { key: "Esc", label: "Back"     },
+    ]];
+  }
+
+  const NR = 2;
+  function vis(): number { return Math.max(1, R() - NR - 2); }
+  function start(): number { return NR + 2; }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
   function rebuild(): void { rows = buildRows(events, expanded); sel = Math.min(sel, Math.max(0, rows.length - 1)); adjustScroll(); }
   function buildLeft(): string { return `Activity  ${events.length} event${events.length === 1 ? "" : "s"}`; }
   function buildRight(): string { if (rows.length <= vis()) return ""; const more = rows.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
   function fullDraw(): void {
-    drawNavbar(NAV, NAV.length);
+    drawNavbar(NAV());
     drawContentRows(rows, sel, scrollTop, vis(), start());
     drawBottomBar(buildLeft(), buildRight());
   }
@@ -132,30 +141,27 @@ export function showGeneralHistory(onBack: () => void): void {
     const cmdEvents = events.filter(e => e.kind === "command"); if (!cmdEvents.length) return;
     let cmdSel = 0; let cmdScroll = 0; let cmdSelected = new Set<string>();
 
-    function CMD_NAV_ROW1(): NavItem[] {
-      return [
-        { key: "↑↓",  label: "Navigate"   },
-        { key: "Spc", label: "Select"      },
-        { key: "A",   label: "Select All"  },
+    function CMD_NAV(): NavRows {
+      return [[
+        { key: "Nav", label: "Navigate"   },
+        { key: "Spc", label: "Select"     },
+        { key: "A",   label: "Select All" },
+        { key: "Ent", label: "Use"        },
+        { key: "X",   label: "Delete"     },
+        { key: "D",   label: "Delete All" },
         { key: "Esc", label: cmdSelected.size > 0 ? "Deselect" : "Back" },
-      ];
-    }
-    function CMD_NAV_ROW2(): NavItem[] {
-      return [
-        { key: "D",  label: "Delete"     },
-        { key: "^D", label: "Delete All" },
-      ];
+      ]];
     }
 
-    function cmdNR(): number { return 2; }
-    function cmdVis(): number { return Math.max(1, R() - cmdNR() - 2); }
-    function cmdStart(): number { return cmdNR() + 2; }
+    const cmdNR = 2;
+    function cmdVis(): number { return Math.max(1, R() - cmdNR - 2); }
+    function cmdStart(): number { return cmdNR + 2; }
     function cmdAdjust(): void { const v = cmdVis(); if (cmdSel < cmdScroll) cmdScroll = cmdSel; if (cmdSel >= cmdScroll + v) cmdScroll = cmdSel - v + 1; }
     function cmdBuildLeft(): string { let s = `Commands  ${cmdEvents.length}`; if (cmdSelected.size) s += chalk.magenta(`  ${cmdSelected.size} sel`); return s; }
 
     function drawCmd(): void {
       const v = cmdVis(); const s = cmdStart(); const cols = C();
-      drawNavbar([...CMD_NAV_ROW1(), ...CMD_NAV_ROW2()], CMD_NAV_ROW1().length);
+      drawNavbar(CMD_NAV());
       let out = "";
       for (let i = 0; i < v; i++) {
         out += at(s + i, 1) + clr(); const e = cmdEvents[cmdScroll + i]; if (!e) continue;
@@ -179,7 +185,10 @@ export function showGeneralHistory(onBack: () => void): void {
       cmdEvents.splice(0, cmdEvents.length, ...newCmds); cmdSel = Math.min(cmdSel, cmdEvents.length - 1); cmdAdjust(); drawCmd();
     }
     function deleteAllCmd(): void { events = events.filter(e => e.kind !== "command"); persist(); backFromCmd(); }
-    function backFromCmd(): void { process.stdout.removeListener("resize", onCmdResize); stdin.removeListener("data", onCmdKey); process.stdout.on("resize", onResize); rebuild(); clearScreen(); fullDraw(); stdin.on("data", onKey); }
+    function backFromCmd(): void {
+      process.stdout.removeListener("resize", onCmdResize); stdin.removeListener("data", onCmdKey);
+      process.stdout.on("resize", onResize); rebuild(); clearScreen(); fullDraw(); stdin.on("data", onKey);
+    }
     const onCmdResize = () => { clearScreen(); drawCmd(); };
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onCmdResize); stdin.removeListener("data", onKey);
     function onCmdKey(raw: string): void {
@@ -187,38 +196,52 @@ export function showGeneralHistory(onBack: () => void): void {
       if (raw === "\u001b[B") { if (cmdSel < cmdEvents.length - 1) { cmdSel++; cmdAdjust(); drawCmd(); } return; }
       if (raw === "\u001b" || raw === "\u0003") { if (cmdSelected.size > 0) { cmdSelected.clear(); drawCmd(); } else backFromCmd(); return; }
       if (raw.startsWith("\u001b")) return;
-      if (raw === " ") { toggleCmdSel(); return; } if (raw === "a") { selectAllCmd(); return; }
-      if (raw === "d" || raw === "\x7f") { deleteSelected(); return; } if (raw === "\x04" || raw === "D") { deleteAllCmd(); return; }
+      if (raw === " ") { toggleCmdSel(); return; }
+      if (raw === "a") { selectAllCmd(); return; }
+      if (raw === "\r") {
+        const e = cmdEvents[cmdSel];
+        if (e) {
+          backFromCmd();
+          setTimeout(() => {}, 0);
+        }
+        return;
+      }
+      if (raw === "x" || raw === "\x7f") { deleteSelected(); return; }
+      if (raw === "d") { deleteAllCmd(); return; }
     }
     stdin.on("data", onCmdKey); clearScreen(); drawCmd();
   }
 
   function handleEnter(): void {
     if (!rows.length) return; const row = rows[sel];
-    if (row.kind === "cat_header") { if (row.cat === "commands") { openCommandEdit(); return; } expanded[row.cat] = !expanded[row.cat]; rebuild(); fullDraw(); return; }
+    if (row.kind === "cat_header") {
+      if (row.cat === "commands") { openCommandEdit(); return; }
+      expanded[row.cat] = !expanded[row.cat]; rebuild(); fullDraw(); return;
+    }
     if (row.kind === "show_more") { expanded[row.cat] = true; rebuild(); fullDraw(); return; }
     if (row.kind === "entry") showDetail(row.event);
   }
 
   function showDetail(e: GeneralEvent): void {
     const detailNAV: NavItem[] = [{ key: "Esc", label: "Back" }];
-    const dNR = 3; const dStart = dNR + 2; const dVis = () => R() - dNR - 2;
+    const dNR = 2; const dStart = dNR + 2; const dVis = () => R() - dNR - 2;
     process.stdout.removeListener("resize", onResize);
-    const onDR = () => { clearScreen(); drawNavbar(detailNAV, detailNAV.length); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), ""); };
+    const onDR = () => { clearScreen(); drawNavbar([detailNAV]); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), ""); };
     process.stdout.on("resize", onDR);
     function onDetailKey(k: string): void {
       if (k === "\u0003") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); cleanup(); setTimeout(onBack, 20); return; }
       if (k === "\u001b" || k === "q") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); process.stdout.on("resize", onResize); clearScreen(); fullDraw(); stdin.on("data", onKey); }
     }
     stdin.removeListener("data", onKey); stdin.on("data", onDetailKey);
-    clearScreen(); drawNavbar(detailNAV, detailNAV.length); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), "");
+    clearScreen(); drawNavbar([detailNAV]); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), "");
   }
 
   function onKey(raw: string): void {
     if (raw === "\u001b[A") { if (sel > 0) { sel--; adjustScroll(); fullDraw(); } return; }
     if (raw === "\u001b[B") { if (sel < rows.length - 1) { sel++; adjustScroll(); fullDraw(); } return; }
     if (raw === "\u0003" || raw === "\u001b" || raw === "q") { exit(); return; }
-    if (raw.startsWith("\u001b")) return; if (raw === "\r") { handleEnter(); return; }
+    if (raw.startsWith("\u001b")) return;
+    if (raw === "\r") { handleEnter(); return; }
   }
   process.stdout.on("resize", onResize); if (stdin.isTTY) stdin.setRawMode(true);
   stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);

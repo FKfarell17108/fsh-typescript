@@ -33,22 +33,22 @@ export function interactiveDir(onExit: () => void): void {
     const cb = getClipboard() as any;
     return [
       [
-        { key: "↑↓←→", label: "Navigate"   },
-        { key: "Spc",   label: "Select"     },
-        { key: "A",     label: "Select All" },
-        { key: "Ent",   label: "Enter Dir"  },
-        { key: "Tab",   label: "Parent Dir" },
-        { key: "Esc",   label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
+        { key: "Nav", label: "Navigate"   },
+        { key: "Spc", label: "Select"     },
+        { key: "A",   label: "Select All" },
+        { key: "Ent", label: "Enter Dir"  },
+        { key: "Tab", label: "Parent Dir" },
+        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
+        { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ],
       [
-        { key: "C",  label: "Copy"    },
-        { key: "X",  label: "Cut"     },
-        { key: "V",  label: "Paste"   },
-        { key: "R",  label: "Rename"  },
-        { key: "M",  label: "Move To" },
-        { key: "D",  label: "Delete"  },
-        { key: ".",  label: showHidden ? "Hide Hidden" : "Show Hidden" },
-        { key: "H",  label: "History" },
+        { key: "C",   label: "Copy"    },
+        { key: "X",   label: "Cut"     },
+        { key: "V",   label: "Paste"   },
+        { key: "R",   label: "Rename"  },
+        { key: "M",   label: "Move To" },
+        { key: "D",   label: "Delete"  },
+        { key: "H",   label: "History" },
       ],
     ];
   }
@@ -185,7 +185,7 @@ export function interactiveDir(onExit: () => void): void {
     const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash" }, { key: "N/Esc", label: "Cancel" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
-      drawNavbar(confirmNav, confirmNav.length);
+      drawNavbar([confirmNav]);
       let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
