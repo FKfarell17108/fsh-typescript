@@ -3,27 +3,60 @@ import path from "path";
 import chalk from "chalk";
 import { loadMeta, TrashEntry, restoreFromTrash, deleteFromTrash, deleteAllFromTrash, TRASH_DIR } from "./trash";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { TrashSort, DEFAULT_TRASH_SORT, trashSortLabel, showSortPicker } from "./sort";
+
+function sortTrash(entries: TrashEntry[], sort: TrashSort): TrashEntry[] {
+  const arr = [...entries];
+  arr.sort((a, b) => {
+    if (sort.key === "date")  { return sort.dir === "desc" ? b.trashedAt - a.trashedAt : a.trashedAt - b.trashedAt; }
+    if (sort.key === "name")  { const c = a.name.localeCompare(b.name); return sort.dir === "asc" ? c : -c; }
+    if (sort.key === "size")  {
+      const sa = (() => { try { return fs.statSync(path.join(TRASH_DIR, a.id)).size; } catch { return 0; } })();
+      const sb = (() => { try { return fs.statSync(path.join(TRASH_DIR, b.id)).size; } catch { return 0; } })();
+      return sort.dir === "desc" ? sb - sa : sa - sb;
+    }
+    if (sort.key === "type")  { const c = Number(b.isDir) - Number(a.isDir); return sort.dir === "asc" ? c : -c; }
+    return 0;
+  });
+  return arr;
+}
 
 export function interactiveTrash(onExit: () => void): void {
   const stdin = process.stdin;
-  let active = true;
-  let entries = loadMeta();
-  if (!entries.length) { console.log(chalk.gray("  (trash is empty)")); return onExit(); }
+  let rawEntries = loadMeta();
+  if (!rawEntries.length) { console.log(chalk.gray("  (trash is empty)")); return onExit(); }
+
+  let currentSort: TrashSort = { ...DEFAULT_TRASH_SORT };
+  let entries = sortTrash(rawEntries, currentSort);
   let sel = 0; let scrollTop = 0; let selected = new Set<string>();
+
+  function reload(): void {
+    rawEntries = loadMeta();
+    entries = sortTrash(rawEntries, currentSort);
+  }
+
+  function applySort(): void {
+    const prevId = entries[sel]?.id;
+    entries = sortTrash(rawEntries, currentSort);
+    sel = 0;
+    if (prevId) { const idx = entries.findIndex(e => e.id === prevId); if (idx >= 0) sel = idx; }
+    adjustScroll();
+  }
 
   function NAV(): NavRows {
     return [
       [
-        { key: "Nav", label: "Navigate"},
-        { key: "Spc", label: "Select"},
-        { key: "A", label: "Select All"},
-        { key: "Ent", label: "Preview"},
+        { key: "Nav", label: "Navigate" },
+        { key: "Spc", label: "Select" },
+        { key: "A",   label: "Select All" },
+        { key: "Ent", label: "Preview" },
+        { key: "S",   label: "Sort" },
+        { key: "Esc", label: selected.size > 0 ? "Deselect" : "Quit" },
       ],
       [
         { key: "R", label: "Restore" },
         { key: "X", label: "Delete Forever" },
-        { key: "D", label: "Empty Trash"},
-        { key: "Esc", label: selected.size > 0 ? "Deselect" : "Quit"},
+        { key: "D", label: "Empty Trash" },
       ],
     ];
   }
@@ -38,7 +71,7 @@ export function interactiveTrash(onExit: () => void): void {
   function getTargets(): TrashEntry[] { if (selected.size > 0) return entries.filter(e => selected.has(e.id)); return entries.length ? [entries[sel]] : []; }
 
   function afterAction(): void {
-    entries = loadMeta(); selected.clear();
+    reload(); applySort(); selected.clear();
     if (!entries.length) return exit();
     sel = Math.min(sel, entries.length - 1); adjustScroll();
     process.stdout.removeListener("resize", onResize);
@@ -54,11 +87,21 @@ export function interactiveTrash(onExit: () => void): void {
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
     return s;
   }
-  function buildRight(): string { if (entries.length <= vis()) return ""; const more = entries.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
+  function buildRight(): string {
+    const sortStr = chalk.dim("  [S] " + trashSortLabel(currentSort));
+    if (entries.length <= vis()) return sortStr;
+    const more = entries.length - (scrollTop + vis());
+    return (more > 0 ? `↓ ${more} more` : "end") + sortStr;
+  }
   function drawBottom(): void { drawBottomBar(buildLeft(), buildRight()); }
 
   function drawContent(): void {
     const start = NR + 2; const cols = C(); const v = vis(); let out = "";
+    if (!entries.length) {
+      out += at(start, 1) + clr() + chalk.dim("  (trash is empty)");
+      for (let i = 1; i < v; i++) out += at(start + i, 1) + clr();
+      w(out); return;
+    }
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr();
       const e = entries[scrollTop + i]; if (!e) continue;
@@ -89,6 +132,19 @@ export function interactiveTrash(onExit: () => void): void {
 
   function render(): void { drawNavbar(NAV()); drawContent(); drawBottom(); }
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
+
+  function doSort(): void {
+    process.stdout.removeListener("resize", onResize);
+    stdin.removeListener("data", onKey);
+    showSortPicker("trash", currentSort, R() - 2,
+      (result) => {
+        currentSort = result; applySort();
+        process.stdout.on("resize", onResize);
+        fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
 
   function showConfirmDelete(targets: TrashEntry[], onBack: () => void): void {
     const multi = targets.length > 1;
@@ -150,7 +206,7 @@ export function interactiveTrash(onExit: () => void): void {
     const src = path.join(TRASH_DIR, entry.id);
     const previewNav: NavItem[] = [
       { key: "Esc", label: "Back" }, { key: "R", label: "Restore" }, { key: "X", label: "Delete Forever" },
-      ...(entry.isDir ? [{ key: "O", label: "Browse Dir"} as NavItem] : []),
+      ...(entry.isDir ? [{ key: "O", label: "Browse Dir" } as NavItem] : []),
     ];
     function drawPreview(): void {
       const start = 3; const v = R() - 3;
@@ -186,6 +242,7 @@ export function interactiveTrash(onExit: () => void): void {
     if (k === "\u001b[A") { if (sel > 0) { sel--; adjustScroll(); render(); } return; }
     if (k === "\u001b[B") { if (sel < entries.length - 1) { sel++; adjustScroll(); render(); } return; }
     if (k.startsWith("\u001b")) return;
+    if (k === "s") { doSort(); return; }
     if (k === " ") { toggleSelect(); render(); return; }
     if (k === "a") { selectAll(); render(); return; }
     if (k === "\r") { if (selected.size === 0) showPreview(entries[sel]); return; }
@@ -201,19 +258,19 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
   let entries: { name: string; isDir: boolean }[] = [];
   try { entries = fs.readdirSync(dirPath, { withFileTypes: true }).map(e => ({ name: e.name, isDir: e.isDirectory() })).sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name)); } catch { onBack(); return; }
   let sel = 0; let scrollTop = 0;
-  const nav: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back" }];
+  const nav: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
   function drawContent(): void {
     const start = NR + 2; const cols = C(); const v = vis(); let out = "";
+    if (!entries.length) { out += at(start, 1) + clr() + chalk.dim("  (empty)"); for (let i = 1; i < v; i++) out += at(start + i, 1) + clr(); w(out); return; }
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr(); const e = entries[scrollTop + i]; if (!e) continue;
       const active = (scrollTop + i) === sel; const icon = e.isDir ? chalk.blue("▸ ") : chalk.gray("  ");
       const padded = (icon + e.name).padEnd(cols - 2);
       out += active ? " " + chalk.bgWhite.black.bold(padded) : " " + (e.isDir ? chalk.blue(padded) : chalk.white(padded));
     }
-    if (!entries.length) out += at(NR + 2, 1) + clr() + chalk.gray("  (empty)");
     w(out);
   }
   function buildRight(): string { if (entries.length <= vis()) return ""; const more = entries.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }

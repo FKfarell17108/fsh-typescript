@@ -7,6 +7,10 @@ import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRen
 import { showFileOpsLog } from "./fileOpsLog";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import {
+  LsSort, DEFAULT_LS_SORT, lsSortLabel,
+  sortLsEntriesWithStat, showSortPicker,
+} from "./sort";
+import {
   PreviewPref, PreviewState,
   getPreviewMode, listCols,
   makePreviewState, updatePreview, forceUpdatePreview, scrollPreview,
@@ -76,6 +80,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   let previewPref: PreviewPref  = "auto";
   const pvState: PreviewState   = makePreviewState();
+  let currentSort: LsSort       = { ...DEFAULT_LS_SORT };
 
   let browseMode  = false;
   let browseIdx   = 0;
@@ -90,10 +95,13 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         const full = path.join(currentDir, name); let isDir = false;
         try { isDir = fs.statSync(full).isDirectory(); } catch {}
         return { name, isDir };
-      }).sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
+      });
     } catch { allEntries = []; }
   }
-  function visible() { return showHidden ? allEntries : allEntries.filter(e => !e.name.startsWith(".")); }
+  function visible() {
+    const base = showHidden ? allEntries : allEntries.filter(e => !e.name.startsWith("."));
+    return sortLsEntriesWithStat(base, currentSort, currentDir);
+  }
   function reload(keepName?: string): void {
     loadAll(); entries = visible();
     if (!entries.length && allEntries.length) { showHidden = true; entries = visible(); }
@@ -250,15 +258,16 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function drawMiniBar(): void {
     if (browseMode) { w(at(R() - 1, 1) + clr()); return; }
-    const cols = C();
+    const cols  = C();
     const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
     const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
+    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
     const nPart = nKey + chalk.dim(" New Folder");
     const tPart = tKey + chalk.dim(" New File");
-    const gap   = "    ";
-    const line  = "  " + nPart + gap + tPart;
+    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
+    const line  = "  " + nPart + "    " + tPart + "    " + sPart;
     const vl    = visibleLen(line);
-    w(at(R() - 1, 1) + clr() + line + (vl < cols ? chalk.dim(" ".repeat(cols - vl)) : ""));
+    w(at(R() - 1, 1) + clr() + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function adjustScroll(): void {
@@ -550,6 +559,23 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     );
   }
 
+  function doSort(): void {
+    process.stdout.removeListener("resize", onResize);
+    stdin.removeListener("data", onKey);
+    showSortPicker("ls", currentSort, R() - 2,
+      (result) => {
+        currentSort = result;
+        process.stdout.on("resize", onResize);
+        const prev = entries[selIdx]?.name;
+        entries = visible();
+        selIdx = 0;
+        if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
+        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function openLog(): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); });
@@ -584,6 +610,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       }
       return;
     }
+    if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "t") { doTouch(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }

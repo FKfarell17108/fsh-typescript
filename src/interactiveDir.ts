@@ -7,6 +7,10 @@ import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRen
 import { showFileOpsLog } from "./fileOpsLog";
 import { showInlineInput } from "./interactiveLs";
 import {
+  LsSort, DEFAULT_LS_SORT, lsSortLabel,
+  sortDirEntriesWithStat, showSortPicker,
+} from "./sort";
+import {
   PreviewPref, PreviewState,
   getPreviewMode, listCols,
   makePreviewState, updatePreview, forceUpdatePreview, scrollPreview,
@@ -21,12 +25,15 @@ export function interactiveDir(onExit: () => void): void {
     try {
       return fs.readdirSync(dir, { withFileTypes: true })
         .filter(e => { try { return e.isDirectory() || (e.isSymbolicLink() && fs.statSync(path.join(dir, e.name)).isDirectory()); } catch { return false; } })
-        .map(e => ({ name: e.name, hidden: e.name.startsWith(".") }))
-        .sort((a, b) => { if (a.hidden !== b.hidden) return Number(a.hidden) - Number(b.hidden); return a.name.localeCompare(b.name); });
+        .map(e => ({ name: e.name, hidden: e.name.startsWith(".") }));
     } catch { return []; }
   }
   let allEntries = loadDirs(cwd); let showHidden = false;
-  const visibleEntries = () => showHidden ? allEntries : allEntries.filter(e => !e.hidden);
+  let currentSort: LsSort = { ...DEFAULT_LS_SORT };
+  const visibleEntries = () => {
+    const base = showHidden ? allEntries : allEntries.filter(e => !e.hidden);
+    return sortDirEntriesWithStat(base, currentSort, cwd);
+  };
   let entries = visibleEntries();
   if (!process.stdin.isTTY) { console.log(entries.map(e => e.name).join("  ")); return onExit(); }
   if (allEntries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
@@ -201,15 +208,16 @@ export function interactiveDir(onExit: () => void): void {
 
   function drawMiniBar(): void {
     if (browseMode) { w(at(R() - 1, 1) + clr()); return; }
-    const cols = C();
+    const cols  = C();
     const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
     const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
+    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
     const nPart = nKey + chalk.dim(" New Folder");
     const tPart = tKey + chalk.dim(" New File");
-    const gap   = "    ";
-    const line  = "  " + nPart + gap + tPart;
+    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
+    const line  = "  " + nPart + "    " + tPart + "    " + sPart;
     const vl    = visibleLen(line);
-    w(at(R() - 1, 1) + clr() + line + (vl < cols ? chalk.dim(" ".repeat(cols - vl)) : ""));
+    w(at(R() - 1, 1) + clr() + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function navigate(key: string): boolean {
@@ -406,6 +414,23 @@ export function interactiveDir(onExit: () => void): void {
     stdin.on("data", onConfirm); clearScreen(); drawConfirm();
   }
 
+  function doSort(): void {
+    process.stdout.removeListener("resize", onResize);
+    stdin.removeListener("data", onKey);
+    showSortPicker("dir", currentSort, R() - 2,
+      (result) => {
+        currentSort = result;
+        process.stdout.on("resize", onResize);
+        const prev = entries[selIdx]?.name;
+        allEntries = loadDirs(cwd); entries = visibleEntries();
+        selIdx = 0;
+        if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
+        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function openLog(): void { process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey); showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }); }
   function onResize(): void { adjustScroll(); fullRedraw(); }
   function onKey(k: string): void {
@@ -424,6 +449,7 @@ export function interactiveDir(onExit: () => void): void {
     if (k === "\u001b") { if (getClipboard()) { clearClipboard(); render(); } else if (selected.size > 0) { selected.clear(); render(); } else { process.chdir(cwd); exit(); } return; }
     if (k === "h") { openLog(); return; }
     if (k === "o") { if (pvState.content?.kind === "dir") { enterBrowse(); } return; }
+    if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "t") { doTouch(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }

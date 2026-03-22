@@ -2,6 +2,22 @@ import chalk from "chalk";
 import path from "path";
 import { getLog, loadLog, FileOp, OpKind } from "./fileOps";
 import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { LogSort, DEFAULT_LOG_SORT, logSortLabel, showSortPicker } from "./sort";
+
+function sortLog(ops: FileOp[], sort: LogSort): FileOp[] {
+  const arr = [...ops];
+  arr.sort((a, b) => {
+    if (sort.key === "date")   { return sort.dir === "desc" ? b.timestamp - a.timestamp : a.timestamp - b.timestamp; }
+    if (sort.key === "kind")   { const c = a.kind.localeCompare(b.kind); return sort.dir === "asc" ? c : -c; }
+    if (sort.key === "status") {
+      const order = { done: 0, pending: 1, error: 2 };
+      const c = (order[a.status] ?? 1) - (order[b.status] ?? 1);
+      return sort.dir === "asc" ? c : -c;
+    }
+    return 0;
+  });
+  return arr;
+}
 
 function kindLabel(kind: OpKind): string {
   switch (kind) { case "copy": return chalk.cyan.bold("copy  "); case "cut": return chalk.yellow.bold("cut   "); case "move": return chalk.magenta.bold("move  "); case "rename": return chalk.blue.bold("rename"); }
@@ -12,13 +28,27 @@ function homify(p: string): string { const home = process.env.HOME ?? ""; return
 
 function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen: boolean): void {
   loadLog();
-  let active = true; let ops = getLog(); let sel = 0; let scrollTop = 0;
-  const NAV: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Detail"}, { key: "Esc", label: "Back" }];
+  let active = true; let rawOps = getLog(); let currentSort: LogSort = { ...DEFAULT_LOG_SORT };
+  let ops = sortLog(rawOps, currentSort);
+  let sel = 0; let scrollTop = 0;
+  const NAV: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Detail"}, { key: "S", label: "Sort"}, { key: "Esc", label: "Back" }];
   const NR = 2;
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
+  function applySort(): void {
+    const prevId = ops[sel]?.id;
+    ops = sortLog(rawOps, currentSort);
+    sel = 0;
+    if (prevId) { const idx = ops.findIndex(o => o.id === prevId); if (idx >= 0) sel = idx; }
+    adjustScroll();
+  }
   function buildLeft(): string { return ops.length ? `File History  ${ops.length} op${ops.length === 1 ? "" : "s"}` : "File History"; }
-  function buildRight(): string { if (ops.length <= vis()) return ""; const more = ops.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
+  function buildRight(): string {
+    const sortStr = chalk.dim("  [S] " + logSortLabel(currentSort));
+    if (ops.length <= vis()) return sortStr;
+    const more = ops.length - (scrollTop + vis());
+    return (more > 0 ? `↓ ${more} more` : "end") + sortStr;
+  }
 
   function drawLogContent(): void {
     const start = NR + 2; const cols = C(); const v = vis(); let out = "";
@@ -56,6 +86,19 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); if (ownsAltScreen) { clearScreen(); exitAlt(); } else { w("\x1b[0m"); } }
   function exit(): void { cleanup(); setTimeout(onBack, 20); }
 
+  function doSort(): void {
+    process.stdout.removeListener("resize", onResize);
+    stdin.removeListener("data", onKey);
+    showSortPicker("log", currentSort, R() - 2,
+      (result) => {
+        currentSort = result; applySort();
+        process.stdout.on("resize", onResize);
+        fullDraw(); stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullDraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function showDetail(op: FileOp): void {
     const detailNav: NavItem[] = [{ key: "Esc", label: "Back" }];
     process.stdout.removeListener("resize", onResize);
@@ -74,6 +117,7 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
     if (raw === "\u001b[B") { if (sel < ops.length - 1) { sel++; adjustScroll(); fullDraw(); } return; }
     if (raw === "\u0003" || raw === "\u001b" || raw === "q") { exit(); return; }
     if (raw.startsWith("\u001b")) return;
+    if (raw === "s") { doSort(); return; }
     if (raw === "\r" && ops.length > 0) showDetail(ops[sel]);
   }
   process.stdout.on("resize", onResize); if (stdin.isTTY) stdin.setRawMode(true);
