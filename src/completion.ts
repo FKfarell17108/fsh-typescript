@@ -41,11 +41,12 @@ export function commonPrefix(strs: string[]): string {
 
 export function showPicker(candidates: string[], onSelect: (chosen: string) => void, onCancel: () => void, onHistory?: () => void): void {
   if (!candidates.length) return onCancel();
-  const stdin = process.stdin; let selIdx = 0; let scrollTop = 0;
+  const stdin = process.stdin;
+  let active = true; let selIdx = 0; let scrollTop = 0;
 
   function NAV(): NavItem[] {
-    const items: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Select" }, { key: "Esc", label: "Cancel" }];
-    if (onHistory) items.push({ key: "Tab", label: "History" });
+    const items: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Select"}, { key: "Esc", label: "Cancel"}];
+    if (onHistory) items.push({ key: "Tab", label: "History"});
     return items;
   }
   const NR = 2;
@@ -82,7 +83,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
   function exit(chosen?: string): void { cleanup(); setTimeout(() => { if (chosen !== undefined) onSelect(chosen); else onCancel(); }, 20); }
-  function onResize(): void { fullRedraw(); }
+  function onResize(): void { clearScreen(); adjustScroll(); fullRedraw(); }
   process.stdout.on("resize", onResize); stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8");
   stdin.on("data", (key: string) => {
     const p = pr();

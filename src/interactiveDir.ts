@@ -26,6 +26,7 @@ export function interactiveDir(onExit: () => void): void {
   if (entries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
 
   const stdin = process.stdin;
+  let active = true;
   let selIdx = 0; let scrollTop = 0; let selected = new Set<string>();
   let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -33,22 +34,22 @@ export function interactiveDir(onExit: () => void): void {
     const cb = getClipboard() as any;
     return [
       [
-        { key: "Nav", label: "Navigate"   },
-        { key: "Spc", label: "Select"     },
-        { key: "A",   label: "Select All" },
-        { key: "Ent", label: "Enter Dir"  },
-        { key: "Tab", label: "Parent Dir" },
-        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
-        { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
+        { key: "Nav", label: "Navigate"},
+        { key: "Spc", label: "Select"},
+        { key: "A", label: "Select All"},
+        { key: "Ent", label: "Enter Dir"},
+        { key: "Tab", label: "Parent Dir"},
+        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit"},
+        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden"},
       ],
       [
-        { key: "C",   label: "Copy"    },
-        { key: "X",   label: "Cut"     },
-        { key: "V",   label: "Paste"   },
-        { key: "R",   label: "Rename"  },
-        { key: "M",   label: "Move To" },
-        { key: "D",   label: "Delete"  },
-        { key: "H",   label: "History" },
+        { key: "C", label: "Copy"},
+        { key: "X", label: "Cut"},
+        { key: "V", label: "Paste"},
+        { key: "R", label: "Rename"},
+        { key: "M", label: "Move To"},
+        { key: "D", label: "Delete"},
+        { key: "H", label: "History"},
       ],
     ];
   }
@@ -182,7 +183,7 @@ export function interactiveDir(onExit: () => void): void {
 
   function showDeleteConfirm(): void {
     const targets = getTargets(); if (!targets.length) return; const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash" }, { key: "N/Esc", label: "Cancel" }];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash"}, { key: "N/Esc", label: "Cancel"}];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);
@@ -215,7 +216,7 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function openLog(): void { process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey); showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }); }
-  function onResize(): void { fullRedraw(); }
+  function onResize(): void { clearScreen(); adjustScroll(); fullRedraw(); }
   function onKey(k: string): void {
     if (k === "\u0003") { process.chdir(cwd); return exit(); }
     if (k === "\u001b") { if (getClipboard()) { clearClipboard(); render(); } else if (selected.size > 0) { selected.clear(); render(); } else { process.chdir(cwd); exit(); } return; }

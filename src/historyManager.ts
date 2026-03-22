@@ -56,6 +56,7 @@ type Row = { kind: "header"; bucketIdx: number } | { kind: "entry"; entry: Histo
 
 export function showHistoryManager(entries: HistoryEntry[], onDone: (result: HistoryResult) => void): void {
   const stdin = process.stdin;
+  let active = true;
   if (entries.length === 0) { console.log(chalk.gray("  (no command history)")); return onDone({ kind: "closed", entries }); }
   const buckets = groupByTime(entries); let selected = new Set<string>();
 
@@ -68,13 +69,13 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
 
   function NAV(): NavRows {
     return [[
-      { key: "Nav", label: "Navigate"    },
-      { key: "Spc", label: "Select"      },
-      { key: "A",   label: "Select All"  },
-      { key: "Ent", label: "Use Command" },
-      { key: "X",   label: "Delete"      },
-      { key: "D",   label: "Delete All"  },
-      { key: "Esc", label: selected.size > 0 ? "Deselect" : "Close" },
+      { key: "Nav", label: "Navigate"},
+      { key: "Spc", label: "Select"},
+      { key: "A", label: "Select All"},
+      { key: "Ent", label: "Use Command"},
+      { key: "X", label: "Delete"},
+      { key: "D", label: "Delete All"},
+      { key: "Esc", label: selected.size > 0 ? "Deselect" : "Close"},
     ]];
   }
   const NR = 2;
@@ -135,7 +136,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
 
   function showConfirmDeleteAll(): void {
     const total = totalCmds();
-    const confirmNav: NavItem[] = [{ key: "Y", label: `Delete all ${total} commands` }, { key: "N/Esc", label: "Cancel" }];
+    const confirmNav: NavItem[] = [{ key: "Y", label: `Delete all ${total} commands` }, { key: "N/Esc", label: "Cancel"}];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
       drawNavbar([confirmNav]); let out = ""; let ln = 0;

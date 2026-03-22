@@ -10,7 +10,7 @@ export const NAVBAR_ROWS = 3;
 export const FOOTER_ROWS = 0;
 export function getNR(): number { return 0; }
 
-export type NavItem = { key: string; label: string; };
+export type NavItem = { key: string; label: string; pri?: number; };
 export type NavRows = NavItem[][];
 
 export function visibleLen(str: string): number {
@@ -46,12 +46,12 @@ function renderNavRow(items: NavItem[], cols: number): string {
   for (let i = 0; i < n; i++) {
     const slotWidth = i === n - 1 ? lastSlotW : slotW;
     const { key, label } = items[i];
-    const keyPad   = Math.max(0, keyW - key.length);
-    const keyLeft  = Math.floor(keyPad / 2);
-    const keyRight = keyPad - keyLeft;
-    const keyStr   = " ".repeat(keyLeft) + key + " ".repeat(keyRight);
-    const keyBlock = chalk.bgWhite.black.bold(` ${keyStr} `);
-    const labAvail = Math.max(0, slotWidth - keyBlockW - 1);
+    const keyPad    = Math.max(0, keyW - key.length);
+    const keyLeft   = Math.floor(keyPad / 2);
+    const keyRight  = keyPad - keyLeft;
+    const keyStr    = " ".repeat(keyLeft) + key + " ".repeat(keyRight);
+    const keyBlock  = chalk.bgWhite.black.bold(` ${keyStr} `);
+    const labAvail  = Math.max(0, slotWidth - keyBlockW - 1);
     const truncated = label.length > labAvail
       ? label.slice(0, Math.max(0, labAvail - 1)) + "…"
       : label;

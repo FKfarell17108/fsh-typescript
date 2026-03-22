@@ -47,6 +47,7 @@ export function interactiveLs(onExit: (result: LsResult) => void): void {
   }
   loadLog();
   const stdin = process.stdin;
+  let active = true;
   function finish(result: LsResult) {
     stdin.removeAllListeners("data");
     try { if (stdin.isTTY) stdin.setRawMode(false); } catch {}
@@ -63,6 +64,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   let selIdx = 0; let scrollTop = 0;
   let selected = new Set<string>();
   let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
+  let active = true;
   let allEntries: { name: string; isDir: boolean }[] = [];
   let entries:    { name: string; isDir: boolean }[] = [];
 
@@ -89,22 +91,22 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const cb = getClipboard() as any;
     return [
       [
-        { key: "Nav", label: "Navigate"   },
-        { key: "Spc", label: "Select"     },
-        { key: "A",   label: "Select All" },
-        { key: "Ent", label: "Open/Enter" },
-        { key: "Tab", label: "Parent Dir" },
-        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
-        { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
+        { key: "Nav", label: "Navigate"},
+        { key: "Spc", label: "Select"},
+        { key: "A", label: "Select All"},
+        { key: "Ent", label: "Open/Enter"},
+        { key: "Tab", label: "Parent Dir"},
+        { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit"},
+        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden"},
       ],
       [
-        { key: "C",   label: "Copy"    },
-        { key: "X",   label: "Cut"     },
-        { key: "V",   label: "Paste"   },
-        { key: "R",   label: "Rename"  },
-        { key: "M",   label: "Move To" },
-        { key: "D",   label: "Delete"  },
-        { key: "H",   label: "History" },
+        { key: "C", label: "Copy"},
+        { key: "X", label: "Cut"},
+        { key: "V", label: "Paste"},
+        { key: "R", label: "Rename"},
+        { key: "M", label: "Move To"},
+        { key: "D", label: "Delete"},
+        { key: "H", label: "History"},
       ],
     ];
   }
@@ -268,7 +270,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function showDeleteConfirm(): void {
     const targets = getTargets(); if (!targets.length) return; const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash" }, { key: "N/Esc", label: "Cancel" }];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash"}, { key: "N/Esc", label: "Cancel"}];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
       drawNavbar([confirmNav]);
@@ -308,7 +310,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const editors = getInstalledEditors(); if (!editors.length) { showStatus("  no editors found", true); return; }
     if (editors.length === 1) { onOpenFile(editors[0], filePath); return; }
     const EW = Math.max(...editors.map(e => e.length)) + 2; let eSel = 0;
-    const editorNav: NavItem[] = [{ key: "◄►", label: "Editor" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
+    const editorNav: NavItem[] = [{ key: "◄►", label: "Editor"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back"}];
     function drawEditor(): void {
       drawNavbar([editorNav]);
       let out = at(3, 1) + clr() + " " + chalk.dim("choose editor:");
