@@ -122,17 +122,19 @@ function drawContentRows(rows: Row[], sel: number, scrollTop: number, vis: numbe
       const tagRaw  = kindTagRaw(e.kind);
       const timeStr = fmtTime(e.ts);
       const isSel   = selected?.has(e.id) ?? false;
-      const maxLbl  = Math.max(8, cols - 4 - tagRaw.length - timeStr.length - 3 - (isSel ? 2 : 0));
-      const lbl     = e.label.length > maxLbl ? e.label.slice(0, maxLbl - 1) + "…" : e.label;
-      const prefix  = isSel ? "✓ " : "  ";
-      const rawLeft = "  " + prefix + tagRaw + lbl;
       const timeLen = timeStr.length;
       const leftW   = cols - timeLen - 2;
+      const maxLbl  = Math.max(8, leftW - 4 - tagRaw.length - 1);
+      const lbl     = e.label.length > maxLbl ? e.label.slice(0, maxLbl - 1) + "…" : e.label;
+      const rawLeft = "  " + (isSel ? "✓ " : "  ") + tagRaw + lbl;
 
       if      (active && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
       else if (active)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);
       else if (isSel)           out += chalk.magenta.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.magenta.bold(timeStr);
-      else                      out += ENTRY_COLOR[row.cat]("  " + prefix + kindTag(e.kind) + lbl) + " ".repeat(Math.max(1, cols - visibleLen("  " + prefix + kindTag(e.kind) + lbl) - timeLen - 2)) + "  " + chalk.dim(timeStr);
+      else {
+        const colored = ENTRY_COLOR[row.cat]("    " + tagRaw + lbl);
+        out += colored + " ".repeat(Math.max(1, leftW - visibleLen("    " + tagRaw + lbl))) + "  " + chalk.dim(timeStr);
+      }
     }
   }
   w(out);
@@ -180,103 +182,165 @@ export function showGeneralHistory(onBack: () => void): void {
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); clearScreen(); exitAlt(); }
   function exit(): void { cleanup(); setTimeout(onBack, 20); }
 
-  function openCommandEdit(): void {
-    const cmdEvents = events.filter(e => e.kind === "command"); if (!cmdEvents.length) return;
-    let cmdSel = 0; let cmdScroll = 0; let cmdSelected = new Set<string>();
+  const CAT_TITLE: Record<Category, string> = {
+    commands:       "Commands",
+    file_mutations: "File & Folder Mutations",
+    trash_ops:      "Trash Operations",
+  };
 
-    function CMD_NAV(): NavRows {
+  const CAT_EMPTY_MSG: Record<Category, string> = {
+    commands:       "no commands yet",
+    file_mutations: "no file operations yet",
+    trash_ops:      "no trash activity yet",
+  };
+
+  const CAT_COLOR: Record<Category, (s: string) => string> = {
+    commands:       chalk.green,
+    file_mutations: chalk.cyan,
+    trash_ops:      chalk.yellow,
+  };
+
+  function kindOfCat(cat: Category): GeneralEventKind[] {
+    if (cat === "commands")       return ["command"];
+    if (cat === "file_mutations") return ["copy", "move", "rename"];
+    return ["trash", "restore", "delete", "empty_trash"];
+  }
+
+  function openCategoryEdit(cat: Category): void {
+    const catKinds  = kindOfCat(cat);
+    const catEvents = events.filter(e => catKinds.includes(e.kind));
+    const title     = CAT_TITLE[cat];
+    const colorFn   = CAT_COLOR[cat];
+    const isCmd     = cat === "commands";
+
+    let eSel = 0; let eScroll = 0; let eSelected = new Set<string>();
+    const editEvents = [...catEvents];
+
+    function EDIT_NAV(): NavRows {
       return [[
         { key: "Nav", label: "Navigate"   },
         { key: "Spc", label: "Select"     },
         { key: "A",   label: "Select All" },
-        { key: "Ent", label: "Use"        },
+        ...(isCmd ? [{ key: "Ent", label: "Use" }] : [{ key: "Ent", label: "Detail" }]),
         { key: "X",   label: "Delete"     },
         { key: "D",   label: "Delete All" },
-        { key: "Esc", label: cmdSelected.size > 0 ? "Deselect" : "Back" },
+        { key: "Esc", label: eSelected.size > 0 ? "Deselect" : "Back" },
       ]];
     }
 
-    const cmdNR = 2;
-    function cmdVis(): number { return Math.max(1, R() - cmdNR - 2); }
-    function cmdStart(): number { return cmdNR + 2; }
-    function cmdAdjust(): void { const v = cmdVis(); if (cmdSel < cmdScroll) cmdScroll = cmdSel; if (cmdSel >= cmdScroll + v) cmdScroll = cmdSel - v + 1; }
-    function cmdBuildLeft(): string {
-      let s = `Commands  ${cmdEvents.length}`;
-      if (cmdSelected.size) s += chalk.magenta(`  ${cmdSelected.size} sel`);
+    const eNR = 2;
+    function eVis(): number { return Math.max(1, R() - eNR - 2); }
+    function eStart(): number { return eNR + 2; }
+    function eAdjust(): void { const v = eVis(); if (eSel < eScroll) eScroll = eSel; if (eSel >= eScroll + v) eScroll = eSel - v + 1; }
+    function eBuildLeft(): string {
+      let s = `${title}  ${editEvents.length}`;
+      if (eSelected.size) s += chalk.magenta(`  ${eSelected.size} sel`);
       return s;
     }
+    function eBuildRight(): string {
+      if (editEvents.length <= eVis()) return "";
+      const more = editEvents.length - (eScroll + eVis());
+      return more > 0 ? `↓ ${more} more` : "end";
+    }
 
-    function drawCmd(): void {
-      const v = cmdVis(); const s = cmdStart(); const cols = C();
-      drawNavbar(CMD_NAV());
+    function drawEdit(): void {
+      const v = eVis(); const s = eStart(); const cols = C();
+      drawNavbar(EDIT_NAV());
       let out = "";
-      if (!cmdEvents.length) {
-        out += at(s, 1) + clr() + chalk.dim("  (no commands yet)");
+      if (!editEvents.length) {
+        out += at(s, 1) + clr() + chalk.dim(`  (${CAT_EMPTY_MSG[cat]})`);
         for (let i = 1; i < v; i++) out += at(s + i, 1) + clr();
-        w(out); drawBottomBar(cmdBuildLeft(), ""); return;
+        w(out); drawBottomBar(eBuildLeft(), ""); return;
       }
       for (let i = 0; i < v; i++) {
         out += at(s + i, 1) + clr();
-        const e      = cmdEvents[cmdScroll + i]; if (!e) continue;
-        const active = (cmdScroll + i) === cmdSel;
-        const isSel  = cmdSelected.has(e.id);
+        const e      = editEvents[eScroll + i]; if (!e) continue;
+        const active = (eScroll + i) === eSel;
+        const isSel  = eSelected.has(e.id);
         const ts     = fmtTime(e.ts);
-        const prefix = isSel ? "✓   " : "    ";
-        const maxLbl = cols - 10;
+        const tsLen  = ts.length;
+        const leftW  = cols - tsLen - 2;
+        const tagR   = isCmd ? "" : kindTagRaw(e.kind) + " ";
+        const maxLbl = leftW - 4 - tagR.length;
         const lbl    = e.label.length > maxLbl ? e.label.slice(0, maxLbl - 1) + "…" : e.label;
-        const raw    = prefix + lbl;
+        const rawLeft = (isSel ? "✓   " : "    ") + tagR + lbl;
 
-        if      (active && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(raw + "  " + ts, cols));
-        else if (active)          out += chalk.bgWhite.black.bold(padOrTrim(raw + "  " + ts, cols));
-        else if (isSel)           out += chalk.magenta.bold(padOrTrim(raw + "  " + ts, cols));
-        else                      out += chalk.green(raw.padEnd(cols - 7)) + "  " + chalk.dim(ts);
+        if      (active && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(ts);
+        else if (active)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(ts);
+        else if (isSel)           out += chalk.magenta.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.magenta.bold(ts);
+        else {
+          const coloredLeft = isCmd
+            ? colorFn("    " + lbl)
+            : "    " + kindTag(e.kind) + " " + colorFn(lbl);
+          out += coloredLeft + " ".repeat(Math.max(1, leftW - rawLeft.length)) + "  " + chalk.dim(ts);
+        }
       }
-      w(out); drawBottomBar(cmdBuildLeft(), "");
+      w(out); drawBottomBar(eBuildLeft(), eBuildRight());
     }
 
-    function toggleCmdSel(): void { const id = cmdEvents[cmdSel]?.id; if (!id) return; if (cmdSelected.has(id)) cmdSelected.delete(id); else cmdSelected.add(id); drawCmd(); }
-    function selectAllCmd(): void { if (cmdSelected.size === cmdEvents.length) cmdSelected.clear(); else cmdSelected = new Set(cmdEvents.map(e => e.id)); drawCmd(); }
+    function toggleSel(): void { const id = editEvents[eSel]?.id; if (!id) return; if (eSelected.has(id)) eSelected.delete(id); else eSelected.add(id); drawEdit(); }
+    function selectAll(): void { if (eSelected.size === editEvents.length) eSelected.clear(); else eSelected = new Set(editEvents.map(e => e.id)); drawEdit(); }
 
     function deleteSelected(): void {
-      const toDelete = cmdSelected.size > 0 ? Array.from(cmdSelected) : (cmdEvents[cmdSel] ? [cmdEvents[cmdSel].id] : []);
+      const toDelete = eSelected.size > 0 ? Array.from(eSelected) : (editEvents[eSel] ? [editEvents[eSel].id] : []);
       if (!toDelete.length) return;
-      events = events.filter(e => !toDelete.includes(e.id)); persist(); cmdSelected.clear();
-      const newCmds = events.filter(e => e.kind === "command");
-      if (!newCmds.length) { backFromCmd(); return; }
-      cmdEvents.splice(0, cmdEvents.length, ...newCmds);
-      cmdSel = Math.min(cmdSel, cmdEvents.length - 1); cmdAdjust(); drawCmd();
+      events = events.filter(e => !toDelete.includes(e.id)); persist(); eSelected.clear();
+      const remaining = events.filter(e => catKinds.includes(e.kind));
+      if (!remaining.length) { backFromEdit(); return; }
+      editEvents.splice(0, editEvents.length, ...remaining);
+      eSel = Math.min(eSel, editEvents.length - 1); eAdjust(); drawEdit();
     }
 
-    function deleteAllCmd(): void { events = events.filter(e => e.kind !== "command"); persist(); backFromCmd(); }
+    function deleteAll(): void {
+      events = events.filter(e => !catKinds.includes(e.kind)); persist(); backFromEdit();
+    }
 
-    function backFromCmd(): void {
-      process.stdout.removeListener("resize", onCmdResize); stdin.removeListener("data", onCmdKey);
+    function backFromEdit(): void {
+      process.stdout.removeListener("resize", onEditResize); stdin.removeListener("data", onEditKey);
       process.stdout.on("resize", onResize); rebuild(); clearScreen(); fullDraw(); stdin.on("data", onKey);
     }
 
-    const onCmdResize = () => { clearScreen(); drawCmd(); };
-    process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onCmdResize); stdin.removeListener("data", onKey);
+    const onEditResize = () => { clearScreen(); drawEdit(); };
+    process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onEditResize); stdin.removeListener("data", onKey);
 
-    function onCmdKey(raw: string): void {
-      if (raw === "\u001b[A") { if (cmdSel > 0) { cmdSel--; cmdAdjust(); drawCmd(); } return; }
-      if (raw === "\u001b[B") { if (cmdSel < cmdEvents.length - 1) { cmdSel++; cmdAdjust(); drawCmd(); } return; }
-      if (raw === "\u001b" || raw === "\u0003") { if (cmdSelected.size > 0) { cmdSelected.clear(); drawCmd(); } else backFromCmd(); return; }
+    function onEditKey(raw: string): void {
+      if (raw === "\u001b[A") { if (eSel > 0) { eSel--; eAdjust(); drawEdit(); } return; }
+      if (raw === "\u001b[B") { if (eSel < editEvents.length - 1) { eSel++; eAdjust(); drawEdit(); } return; }
+      if (raw === "\u001b" || raw === "\u0003") { if (eSelected.size > 0) { eSelected.clear(); drawEdit(); } else backFromEdit(); return; }
       if (raw.startsWith("\u001b")) return;
-      if (raw === " ") { toggleCmdSel(); return; }
-      if (raw === "a") { selectAllCmd(); return; }
-      if (raw === "\r") { const e = cmdEvents[cmdSel]; if (e) { backFromCmd(); } return; }
-      if (raw === "x" || raw === "\x7f") { deleteSelected(); return; }
-      if (raw === "d") { deleteAllCmd(); return; }
+      if (raw === " ")                  { toggleSel(); return; }
+      if (raw === "a")                  { selectAll(); return; }
+      if (raw === "\r" && isCmd)        { backFromEdit(); return; }
+      if (raw === "\r" && !isCmd)       { if (editEvents[eSel]) showDetailFromEdit(editEvents[eSel]); return; }
+      if (raw === "x" || raw === "\x7f"){ deleteSelected(); return; }
+      if (raw === "d")                  { deleteAll(); return; }
     }
-    stdin.on("data", onCmdKey); clearScreen(); drawCmd();
+
+    function showDetailFromEdit(e: GeneralEvent): void {
+      const detailNAV: NavItem[] = [{ key: "Esc", label: "Back" }];
+      const dNR = 2; const dStart = dNR + 2; const dVis = () => R() - dNR - 2;
+      process.stdout.removeListener("resize", onEditResize);
+      const onDR = () => { clearScreen(); drawNavbar([detailNAV]); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), ""); };
+      process.stdout.on("resize", onDR);
+      function onDetailKey(k: string): void {
+        if (k === "\u0003") { stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR); cleanup(); setTimeout(onBack, 20); return; }
+        if (k === "\u001b" || k === "q") {
+          stdin.removeListener("data", onDetailKey); process.stdout.removeListener("resize", onDR);
+          process.stdout.on("resize", onEditResize); clearScreen(); drawEdit(); stdin.on("data", onEditKey);
+        }
+      }
+      stdin.removeListener("data", onEditKey); stdin.on("data", onDetailKey);
+      clearScreen(); drawNavbar([detailNAV]); drawDetailContent(e, dStart, dVis()); drawBottomBar(e.label.slice(0, 40), "");
+    }
+
+    stdin.on("data", onEditKey); clearScreen(); drawEdit();
   }
 
   function handleEnter(): void {
     if (!rows.length) return;
     const row = rows[sel];
     if (row.kind === "cat_header") {
-      if (row.cat === "commands") { openCommandEdit(); return; }
-      expanded[row.cat] = !expanded[row.cat]; rebuild(); fullDraw(); return;
+      openCategoryEdit(row.cat); return;
     }
     if (row.kind === "cat_empty") return;
     if (row.kind === "show_more") { expanded[row.cat] = true; rebuild(); fullDraw(); return; }

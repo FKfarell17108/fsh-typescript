@@ -209,9 +209,9 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
       const timeStr  = fmtTime(op.timestamp);
       const undoHint = canUndo(op) ? " ↩" : "  ";
       const nameStr  = srcShort.length > 26 ? srcShort.slice(0, 25) + "…" : srcShort.padEnd(26);
-      const rawLeft  = ` ${badgeRaw} ${kRaw}  ${nameStr}${undoHint}`;
       const timeLen  = timeStr.length;
       const leftW    = cols - timeLen - 2;
+      const rawLeft  = `${isSel ? "✓" : " "} ${badgeRaw} ${kRaw}  ${nameStr}${undoHint}`;
 
       if (isActive && isSel) {
         out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);

@@ -59,7 +59,8 @@ export function interactiveTrash(onExit: () => void): void {
   }
 
   const NR = 3;
-  function vis(): number { return Math.max(1, R() - NR - 3); }
+  const ENTRY_H = 2;
+  function vis(): number { return Math.max(1, Math.floor((R() - NR - 3) / ENTRY_H)); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
   function exit(): void { cleanup(); setTimeout(onExit, 30); }
@@ -110,41 +111,53 @@ export function interactiveTrash(onExit: () => void): void {
   }
 
   function drawContent(): void {
-    const start = NR + 2; const cols = C(); const v = vis(); let out = "";
+    const start  = NR + 2;
+    const cols   = C();
+    const v      = vis();
+    let out = "";
     if (!entries.length) {
       out += at(start, 1) + clr() + chalk.dim("  (trash is empty)");
-      for (let i = 1; i < v; i++) out += at(start + i, 1) + clr();
+      for (let i = 1; i < v * ENTRY_H; i++) out += at(start + i, 1) + clr();
       w(out); return;
     }
     for (let i = 0; i < v; i++) {
-      out += at(start + i, 1) + clr();
-      const e       = entries[scrollTop + i]; if (!e) continue;
+      const row1 = start + i * ENTRY_H;
+      const row2 = row1 + 1;
+      out += at(row1, 1) + clr();
+      out += at(row2, 1) + clr();
+
+      const e        = entries[scrollTop + i]; if (!e) continue;
       const isCursor = (scrollTop + i) === sel;
       const isSel    = selected.has(e.id);
       const icon     = e.isDir ? "▸" : "·";
       const date     = new Date(e.trashedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       const from     = e.originalPath.replace(process.env.HOME ?? "", "~");
-      const prefix   = isSel ? "✓ " : "  ";
+      const fromTr   = from.length > cols - 12 ? from.slice(0, cols - 13) + "…" : from;
+
+      const nameMaxW = cols - 4;
+      const name     = e.name.length > nameMaxW ? e.name.slice(0, nameMaxW - 1) + "…" : e.name;
+
+      const nameLine = (isSel ? "✓" : " ") + " " + icon + " " + name;
+      const infoLine = "    " + chalk.dim(date + "  from: " + fromTr);
 
       if (isCursor && isSel) {
-        const leftW = cols - date.length - 2;
-        out += chalk.bgMagenta.white.bold(padOrTrim(` ${prefix}${icon} ${e.name}`, leftW) + "  ") + chalk.bgMagenta.white.bold(date);
+        out += at(row1, 1) + chalk.bgMagenta.white.bold(padOrTrim(nameLine, cols));
+        out += at(row2, 1) + chalk.bgMagenta.white.bold(padOrTrim("    " + date + "  from: " + fromTr, cols));
       } else if (isCursor) {
-        const nameMax = Math.max(8, cols - date.length - 4 - Math.min(from.length + 12, Math.floor(cols * 0.35)));
-        const name    = e.name.length > nameMax ? e.name.slice(0, nameMax - 1) + "…" : e.name;
-        const fromTr  = from.length > Math.floor(cols * 0.35) - 12 ? from.slice(0, Math.floor(cols * 0.35) - 13) + "…" : from;
-        const left    = ` ${prefix}${icon} ${name}`;
-        const pad     = Math.max(0, cols - visibleLen(left) - date.length - visibleLen("  from: " + fromTr) - 2);
-        out += chalk.bgWhite.black.bold(left) + " ".repeat(pad) + chalk.bgWhite.black(date) + chalk.bgWhite.dim("  from: " + fromTr);
+        out += at(row1, 1) + chalk.bgWhite.black.bold(padOrTrim(nameLine, cols));
+        out += at(row2, 1) + chalk.bgWhite.dim(padOrTrim("    " + date + "  from: " + fromTr, cols));
       } else if (isSel) {
-        const leftW = cols - date.length - 2;
-        out += chalk.magenta.bold(padOrTrim(` ${prefix}${icon} ${e.name}`, leftW) + "  ") + chalk.magenta.bold(date);
+        out += at(row1, 1) + chalk.magenta.bold(padOrTrim(nameLine, cols));
+        out += at(row2, 1) + chalk.magenta(padOrTrim("    " + date + "  from: " + fromTr, cols));
       } else {
-        const maxName = cols - date.length - 4;
-        const name    = e.name.length > maxName ? e.name.slice(0, maxName - 1) + "…" : e.name;
-        out += (` ${icon} ${name}`).padEnd(cols - date.length - 2) + "  " + chalk.dim(date);
+        const iconColored = e.isDir ? chalk.blue(icon) : chalk.gray(icon);
+        out += at(row1, 1) + "  " + iconColored + " " + chalk.white(name);
+        out += at(row2, 1) + infoLine;
       }
     }
+    const totalRows = v * ENTRY_H;
+    const usedRows  = entries.length < v ? entries.length * ENTRY_H : totalRows;
+    for (let r = usedRows; r < totalRows; r++) out += at(start + r, 1) + clr();
     w(out);
   }
 
@@ -260,7 +273,7 @@ export function interactiveTrash(onExit: () => void): void {
     if (k === "\r") { if (selected.size === 0) showPreview(entries[sel]); return; }
     if (k === "r") { const t = getTargets(); stdin.removeAllListeners("data"); process.stdout.removeListener("resize", onResize); for (const e of t) restoreFromTrash(e); afterAction(); return; }
     if (k === "x") { const targets = getTargets(); process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); showConfirmDelete(targets, () => { process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }); return; }
-    if (k === "D") { showConfirmEmpty(); return; }
+    if (k === "d") { showConfirmEmpty(); return; }
   }
 
   process.stdout.on("resize", onResize);

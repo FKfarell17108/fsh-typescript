@@ -136,17 +136,16 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
         const { cmd, ts } = row.entry;
         const isSel   = selected.has(cmd);
         const timeStr = ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "     ";
-        const maxCmd  = cols - 12;
-        const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
-        const prefix  = isSel ? "✓   " : "    ";
-        const raw     = prefix + display;
         const timeLen = timeStr.length;
         const leftW   = cols - timeLen - 2;
+        const maxCmd  = leftW - 4;
+        const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
+        const rawLeft = (isSel ? "✓   " : "    ") + display;
 
-        if      (isActive && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(raw, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
-        else if (isActive)          out += chalk.bgWhite.black.bold(padOrTrim(raw, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);
-        else if (isSel)             out += chalk.magenta.bold(padOrTrim(raw, leftW) + "  ") + chalk.magenta.bold(timeStr);
-        else                        out += chalk.white(raw.padEnd(leftW)) + "  " + chalk.dim(timeStr);
+        if      (isActive && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
+        else if (isActive)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);
+        else if (isSel)             out += chalk.magenta.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.magenta.bold(timeStr);
+        else                        out += chalk.white("    " + display.padEnd(leftW - 4)) + "  " + chalk.dim(timeStr);
       }
     }
     w(out);
