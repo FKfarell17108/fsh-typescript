@@ -132,27 +132,34 @@ export function interactiveTrash(onExit: () => void): void {
       const icon     = e.isDir ? "▸" : "·";
       const date     = new Date(e.trashedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       const from     = e.originalPath.replace(process.env.HOME ?? "", "~");
-      const fromTr   = from.length > cols - 12 ? from.slice(0, cols - 13) + "…" : from;
+
+      const dateLen  = date.length;
+      const fromPfx  = "from: ";
+      const fromMaxW = Math.max(4, cols - fromPfx.length - dateLen - 6);
+      const fromTr   = from.length > fromMaxW ? from.slice(0, fromMaxW - 1) + "…" : from;
+      const fromStr  = fromPfx + fromTr;
+      const fromLen  = fromStr.length;
+      const infoPad  = Math.max(0, cols - 4 - fromLen - dateLen - 2);
+      const infoRaw  = "    " + fromStr + " ".repeat(infoPad) + "  " + date;
 
       const nameMaxW = cols - 4;
-      const name     = e.name.length > nameMaxW ? e.name.slice(0, nameMaxW - 1) + "…" : e.name;
-
+      const rawName  = e.name + (e.isDir ? "/" : "");
+      const name     = rawName.length > nameMaxW ? rawName.slice(0, nameMaxW - 1) + "…" : rawName;
       const nameLine = (isSel ? "✓" : " ") + " " + icon + " " + name;
-      const infoLine = "    " + chalk.dim(date + "  from: " + fromTr);
 
       if (isCursor && isSel) {
         out += at(row1, 1) + chalk.bgMagenta.white.bold(padOrTrim(nameLine, cols));
-        out += at(row2, 1) + chalk.bgMagenta.white.bold(padOrTrim("    " + date + "  from: " + fromTr, cols));
+        out += at(row2, 1) + chalk.bgMagenta.white.bold(padOrTrim(infoRaw, cols));
       } else if (isCursor) {
         out += at(row1, 1) + chalk.bgWhite.black.bold(padOrTrim(nameLine, cols));
-        out += at(row2, 1) + chalk.bgWhite.dim(padOrTrim("    " + date + "  from: " + fromTr, cols));
+        out += at(row2, 1) + chalk.bgWhite.dim(padOrTrim(infoRaw, cols));
       } else if (isSel) {
         out += at(row1, 1) + chalk.magenta.bold(padOrTrim(nameLine, cols));
-        out += at(row2, 1) + chalk.magenta(padOrTrim("    " + date + "  from: " + fromTr, cols));
+        out += at(row2, 1) + chalk.magenta(padOrTrim(infoRaw, cols));
       } else {
         const iconColored = e.isDir ? chalk.blue(icon) : chalk.gray(icon);
         out += at(row1, 1) + "  " + iconColored + " " + chalk.white(name);
-        out += at(row2, 1) + infoLine;
+        out += at(row2, 1) + "    " + chalk.dim(fromStr) + " ".repeat(infoPad) + "  " + chalk.dim(date);
       }
     }
     const totalRows = v * ENTRY_H;
@@ -181,13 +188,13 @@ export function interactiveTrash(onExit: () => void): void {
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
         line(chalk.bold(`  Delete ${targets.length} items forever`)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-        for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(t.name));
+        for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(t.name + (t.isDir ? "/" : "")));
         if (targets.length > avail - 3) line(chalk.gray(`  ... and ${targets.length - (avail - 3)} more`));
       } else {
         const src = path.join(TRASH_DIR, targets[0].id);
-        line(chalk.bold((targets[0].isDir ? "  dir  " : "  file ") + targets[0].name)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+        line(chalk.bold((targets[0].isDir ? "  dir  " : "  file ") + targets[0].name + (targets[0].isDir ? "/" : ""))); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
         if (targets[0].isDir) {
-          try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
+          try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name + (c.isDirectory() ? "/" : ""))); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
         } else {
           try { const fl = fs.readFileSync(src, "utf8").split("\n"); for (const f of fl.slice(0, avail - 3)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
         }
@@ -212,7 +219,7 @@ export function interactiveTrash(onExit: () => void): void {
       drawNavbar([confirmNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-      for (const e of entries.slice(0, avail - 2)) line((e.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(e.name));
+      for (const e of entries.slice(0, avail - 2)) line((e.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(e.name + (e.isDir ? "/" : "")));
       if (entries.length > avail - 2) line(chalk.gray(`  ... and ${entries.length - (avail - 2)} more`));
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
       w(out); drawBottomBar(`${total} items will be permanently deleted`, "");
@@ -237,9 +244,9 @@ export function interactiveTrash(onExit: () => void): void {
       const start = 3; const v = R() - 3;
       drawNavbar([previewNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= v) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      line(chalk.bold((entry.isDir ? "  dir  " : "  file ") + entry.name)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+      line(chalk.bold((entry.isDir ? "  dir  " : "  file ") + entry.name + (entry.isDir ? "/" : ""))); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
       if (entry.isDir) {
-        try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, v - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > v - 3) line(chalk.gray(`  ... and ${ch.length - (v - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
+        try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, v - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name + (c.isDirectory() ? "/" : ""))); if (ch.length > v - 3) line(chalk.gray(`  ... and ${ch.length - (v - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
       } else {
         try { const fl = fs.readFileSync(src, "utf8").split("\n"); for (const f of fl.slice(0, v - 2)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > v - 2) line(chalk.gray(`  ... ${fl.length - (v - 2)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
       }
@@ -295,7 +302,7 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr(); const e = entries[scrollTop + i]; if (!e) continue;
       const active = (scrollTop + i) === sel;
-      const raw = " " + (e.isDir ? "▸ " : "  ") + e.name;
+      const raw = " " + (e.isDir ? "▸ " : "  ") + e.name + (e.isDir ? "/" : "");
       out += active ? chalk.bgWhite.black.bold(padOrTrim(raw, cols)) : (e.isDir ? chalk.blue(raw) : chalk.white(raw));
     }
     w(out);
