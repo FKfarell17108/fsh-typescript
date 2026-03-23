@@ -6,6 +6,7 @@ import { getAllAliases } from "./aliases";
 const BUILTINS = new Set([
   "exit", "echo", "type", "pwd", "cd", "ls", "dir", "alias", "unalias",
   "clear", "history", "trash", "fshrc", "neofetch",
+  "bookmarks", "search",
 ]);
 
 const CMD_EDITORS = new Set([
@@ -94,18 +95,18 @@ const LONG_FLAGS_WITH_VALUES = new Set([
 
 function cmdColor(cmd: string): string {
   const base = cmd.split("/").pop() ?? cmd;
-  if (BUILTINS.has(base))       return chalk.hex("#73D997")(cmd);
+  if (BUILTINS.has(base)) return chalk.hex("#73D997")(cmd);
   if (getAllAliases().has(base)) return chalk.hex("#A8E6A3")(cmd);
-  if (CMD_EDITORS.has(base))    return chalk.hex("#D4A9F5")(cmd);
-  if (CMD_GIT.has(base))        return chalk.hex("#FFA878")(cmd);
-  if (CMD_NODE.has(base))       return chalk.hex("#6EC6BF")(cmd);
-  if (CMD_PYTHON.has(base))     return chalk.hex("#FFD580")(cmd);
-  if (CMD_SYSTEM.has(base))     return chalk.hex("#FF7B8A")(cmd);
-  if (CMD_NETWORK.has(base))    return chalk.hex("#70D4FF")(cmd);
-  if (CMD_FILE_OPS.has(base))   return chalk.hex("#AEDD87")(cmd);
-  if (CMD_DOCKER.has(base))     return chalk.hex("#5BC8F5")(cmd);
-  if (CMD_BUILD.has(base))      return chalk.hex("#F5C542")(cmd);
-  if (CMD_SHELL.has(base))      return chalk.hex("#B0B8D8")(cmd);
+  if (CMD_EDITORS.has(base)) return chalk.hex("#D4A9F5")(cmd);
+  if (CMD_GIT.has(base)) return chalk.hex("#FFA878")(cmd);
+  if (CMD_NODE.has(base)) return chalk.hex("#6EC6BF")(cmd);
+  if (CMD_PYTHON.has(base)) return chalk.hex("#FFD580")(cmd);
+  if (CMD_SYSTEM.has(base)) return chalk.hex("#FF7B8A")(cmd);
+  if (CMD_NETWORK.has(base)) return chalk.hex("#70D4FF")(cmd);
+  if (CMD_FILE_OPS.has(base)) return chalk.hex("#AEDD87")(cmd);
+  if (CMD_DOCKER.has(base)) return chalk.hex("#5BC8F5")(cmd);
+  if (CMD_BUILD.has(base)) return chalk.hex("#F5C542")(cmd);
+  if (CMD_SHELL.has(base)) return chalk.hex("#B0B8D8")(cmd);
   return chalk.hex("#73D997")(cmd);
 }
 
@@ -176,27 +177,27 @@ type FsKind = "dir" | "dir_hidden" | "file" | "file_hidden" | "none";
 
 function pathArgColor(full: string, kind: FsKind, hidden: boolean): string {
   switch (kind) {
-    case "dir":         return chalk.hex("#6BBFFF")(full);
-    case "dir_hidden":  return chalk.hex("#4A90B8")(full);
-    case "file":        return hidden ? chalk.hex("#888FA8")(full) : chalk.hex("#D8DEF0")(full);
+    case "dir": return chalk.hex("#6BBFFF")(full);
+    case "dir_hidden": return chalk.hex("#4A90B8")(full);
+    case "file": return hidden ? chalk.hex("#888FA8")(full) : chalk.hex("#D8DEF0")(full);
     case "file_hidden": return chalk.hex("#666D88")(full);
-    case "none":        return chalk.hex("#FF7B8A").dim(full);
+    case "none": return chalk.hex("#FF7B8A").dim(full);
   }
 }
 
-let execCache     = new Set<string>();
+let execCache = new Set<string>();
 let execCacheTime = 0;
 let refreshPending = false;
-const CACHE_TTL   = 5_000;
+const CACHE_TTL = 5_000;
 
 function refreshExecutables(): void {
   refreshPending = false;
   const set = new Set<string>();
   for (const dir of (process.env.PATH ?? "").split(":")) {
     try { for (const entry of fs.readdirSync(dir)) set.add(entry); }
-    catch {}
+    catch { }
   }
-  execCache     = set;
+  execCache = set;
   execCacheTime = Date.now();
 }
 
@@ -223,15 +224,15 @@ function commandExists(cmd: string): boolean {
 
 function resolveFsKind(word: string): FsKind {
   let resolved = word;
-  const home   = process.env.HOME ?? "";
+  const home = process.env.HOME ?? "";
   if (word.startsWith("~/")) {
     resolved = path.join(home, word.slice(2));
   } else if (!word.startsWith("/")) {
     resolved = path.join(process.cwd(), word);
   }
   try {
-    const stat   = fs.statSync(resolved);
-    const base   = path.basename(resolved);
+    const stat = fs.statSync(resolved);
+    const base = path.basename(resolved);
     const hidden = base.startsWith(".");
     if (stat.isDirectory()) return hidden ? "dir_hidden" : "dir";
     return hidden ? "file_hidden" : "file";
@@ -256,8 +257,8 @@ function colorArg(word: string, prevFlag: string): string {
     word.startsWith("./") || word.startsWith("../");
 
   if (looksLikePath || !word.includes(" ")) {
-    const kind   = resolveFsKind(word);
-    const base   = path.basename(word);
+    const kind = resolveFsKind(word);
+    const base = path.basename(word);
     const hidden = base.startsWith(".");
     if (kind !== "none" || looksLikePath) {
       return pathArgColor(word, kind, hidden);
@@ -284,9 +285,9 @@ type Token = { type: TokenType; value: string };
 
 function tokenizeForHighlight(input: string): Token[] {
   const tokens: Token[] = [];
-  let i         = 0;
+  let i = 0;
   let expectCmd = true;
-  let lastCmd   = "";
+  let lastCmd = "";
 
   while (i < input.length) {
     const ch = input[i];
@@ -299,13 +300,13 @@ function tokenizeForHighlight(input: string): Token[] {
 
     if (ch === "&" && input[i + 1] === "&") { tokens.push({ type: "operator", value: "&&" }); i += 2; expectCmd = true; lastCmd = ""; continue; }
     if (ch === "|" && input[i + 1] === "|") { tokens.push({ type: "operator", value: "||" }); i += 2; expectCmd = true; lastCmd = ""; continue; }
-    if (ch === "|")                          { tokens.push({ type: "operator", value: "|"  }); i++;    expectCmd = true; lastCmd = ""; continue; }
-    if (ch === ";")                          { tokens.push({ type: "operator", value: ";"  }); i++;    expectCmd = true; lastCmd = ""; continue; }
-    if (ch === "&")                          { tokens.push({ type: "operator", value: "&"  }); i++;    continue; }
+    if (ch === "|") { tokens.push({ type: "operator", value: "|" }); i++; expectCmd = true; lastCmd = ""; continue; }
+    if (ch === ";") { tokens.push({ type: "operator", value: ";" }); i++; expectCmd = true; lastCmd = ""; continue; }
+    if (ch === "&") { tokens.push({ type: "operator", value: "&" }); i++; continue; }
 
     if (ch === ">" && input[i + 1] === ">") { tokens.push({ type: "redirect", value: ">>" }); i += 2; continue; }
-    if (ch === ">")                          { tokens.push({ type: "redirect", value: ">"  }); i++;    continue; }
-    if (ch === "<")                          { tokens.push({ type: "redirect", value: "<"  }); i++;    continue; }
+    if (ch === ">") { tokens.push({ type: "redirect", value: ">" }); i++; continue; }
+    if (ch === "<") { tokens.push({ type: "redirect", value: "<" }); i++; continue; }
 
     if (ch === '"') {
       let s = '"'; i++;
@@ -346,12 +347,12 @@ function tokenizeForHighlight(input: string): Token[] {
 
     if (expectCmd) {
       tokens.push({ type: "command", value: word });
-      lastCmd   = word;
+      lastCmd = word;
       expectCmd = false;
     } else if (
       word.startsWith("-") ||
       (tokens.length > 0 && tokens[tokens.length - 1]?.type === "arg" &&
-       tokens[tokens.length - 1]?.value.trim() === "" && word.startsWith("-"))
+        tokens[tokens.length - 1]?.value.trim() === "" && word.startsWith("-"))
     ) {
       tokens.push({ type: "flag", value: word });
     } else {
@@ -359,10 +360,10 @@ function tokenizeForHighlight(input: string): Token[] {
       if (isFirstArg && lastCmd && !word.startsWith("-") && !word.includes("/")) {
         const base = lastCmd.split("/").pop() ?? lastCmd;
         const isSubCmd =
-          (CMD_GIT.has(base)    && GIT_SUBCOMMANDS.has(word))    ||
-          (CMD_NODE.has(base)   && NPM_SUBCOMMANDS.has(word))    ||
+          (CMD_GIT.has(base) && GIT_SUBCOMMANDS.has(word)) ||
+          (CMD_NODE.has(base) && NPM_SUBCOMMANDS.has(word)) ||
           (CMD_DOCKER.has(base) && DOCKER_SUBCOMMANDS.has(word)) ||
-          (SUDO_LIKE.has(base)  && commandExists(word));
+          (SUDO_LIKE.has(base) && commandExists(word));
         if (isSubCmd) {
           tokens.push({ type: "subcommand", value: word });
           continue;
@@ -380,15 +381,15 @@ function tokenizeForHighlight(input: string): Token[] {
 }
 
 export function highlight(input: string): string {
-  const tokens  = tokenizeForHighlight(input);
-  let   out     = "";
-  let   lastCmd = "";
-  let   lastFlag = "";
+  const tokens = tokenizeForHighlight(input);
+  let out = "";
+  let lastCmd = "";
+  let lastFlag = "";
 
   for (const tok of tokens) {
     switch (tok.type) {
       case "command": {
-        lastCmd  = tok.value;
+        lastCmd = tok.value;
         lastFlag = "";
         out += commandExists(tok.value) ? cmdColor(tok.value) : chalk.hex("#FF6B7A")(tok.value);
         break;

@@ -279,7 +279,7 @@ function openCompletionPicker(candidates: string[], line: string, partial: strin
   );
 }
 
-function resumeInputWithLine(restoreLine: string) {
+export function resumeInputWithLine(restoreLine: string) {
   inputPaused   = false;
   _absorbSigint = false;
   try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}

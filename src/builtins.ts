@@ -4,15 +4,20 @@ import path from "path";
 import chalk from "chalk";
 import { interactiveLs, LsResult } from "./interactiveLs";
 import { interactiveDir } from "./interactiveDir";
-import { pauseInput, resumeInput, resumeInputAndExecute, reloadHistoryInRl } from "./main";
+import { pauseInput, resumeInput, resumeInputAndExecute, resumeInputWithLine, reloadHistoryInRl } from "./main";
 import { showGeneralHistory } from "./generalHistory";
 import { interactiveTrash } from "./trashLs";
 import { setAlias, removeAlias, getAllAliases } from "./aliases";
 import { loadFshrc, generateDefaultFshrc } from "./fshrc";
+import { showBookmarkPicker } from "./bookmarkPicker";
+import { loadBookmarks } from "./bookmarks";
+import { showSearch } from "./search";
+import { loadHistoryEntries } from "./historyManager";
 
 const builtins = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
   "alias", "unalias", "clear", "history", "fshrc", "trash", "neofetch",
+  "bookmarks", "search",
 ];
 
 export function handleBuiltin(
@@ -34,6 +39,28 @@ export function handleBuiltin(
     case "history":
       pauseInput();
       showGeneralHistory(() => resumeInput());
+      return true;
+
+    case "bookmarks":
+      pauseInput();
+      loadBookmarks();
+      showBookmarkPicker(
+        process.cwd(),
+        (dir) => {
+          try { process.chdir(dir); } catch {}
+          resumeInput();
+        },
+        () => resumeInput()
+      );
+      return true;
+
+    case "search":
+      pauseInput();
+      showSearch(
+        loadHistoryEntries(),
+        (value) => resumeInputWithLine(value),
+        () => resumeInput()
+      );
       return true;
 
     case "fshrc":
