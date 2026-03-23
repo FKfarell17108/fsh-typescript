@@ -393,7 +393,7 @@ export function interactiveDir(onExit: () => void): void {
         if (visCount + cWidth > lw) break;
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
-        else if (isSel)             line += chalk.magenta(cell);
+        else if (isSel)             line += chalk.magenta.bold(cell);
         else if (itemAction)        line += cellActionStyle(itemAction, cell, hidden);
         else if (hidden)            line += chalk.cyan(cell);
         else                        line += chalk.blue.bold(cell);

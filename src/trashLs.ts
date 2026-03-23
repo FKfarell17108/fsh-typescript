@@ -31,10 +31,7 @@ export function interactiveTrash(onExit: () => void): void {
   let sel = 0; let scrollTop = 0;
   let selected = new Set<string>();
 
-  function reload(): void {
-    rawEntries = loadMeta();
-    entries = sortTrash(rawEntries, currentSort);
-  }
+  function reload(): void { rawEntries = loadMeta(); entries = sortTrash(rawEntries, currentSort); }
 
   function applySort(): void {
     const prevId = entries[sel]?.id;
@@ -47,10 +44,10 @@ export function interactiveTrash(onExit: () => void): void {
   function NAV(): NavRows {
     return [
       [
-        { key: "Nav", label: "Navigate"       },
-        { key: "Spc", label: "Select"         },
-        { key: "A",   label: "Select All"     },
-        { key: "Ent", label: "Preview"        },
+        { key: "Nav", label: "Navigate"    },
+        { key: "Spc", label: "Select"      },
+        { key: "A",   label: "Select All"  },
+        { key: "Ent", label: "Preview"     },
       ],
       [
         { key: "R",   label: "Restore"        },
@@ -62,7 +59,6 @@ export function interactiveTrash(onExit: () => void): void {
   }
 
   const NR = 3;
-
   function vis(): number { return Math.max(1, R() - NR - 3); }
   function adjustScroll(): void { const v = vis(); if (sel < scrollTop) scrollTop = sel; if (sel >= scrollTop + v) scrollTop = sel - v + 1; }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
@@ -83,8 +79,7 @@ export function interactiveTrash(onExit: () => void): void {
   }
 
   function buildLeft(): string {
-    const dirs  = entries.filter(e => e.isDir).length;
-    const files = entries.length - dirs;
+    const dirs = entries.filter(e => e.isDir).length; const files = entries.length - dirs;
     let s = "Trash";
     if (dirs)  s += `  ${dirs}d`;
     if (files) s += `  ${files}f`;
@@ -100,12 +95,9 @@ export function interactiveTrash(onExit: () => void): void {
 
   function drawMiniBar(): void {
     const cols = C();
-    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
-    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(trashSortLabel(currentSort));
-    const line  = "  " + sPart;
-    const vl    = visibleLen(line);
-    const pad   = vl < cols ? " ".repeat(cols - vl) : "";
-    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + pad);
+    const line = "  " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(trashSortLabel(currentSort));
+    const vl   = visibleLen(line);
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function drawBottom(): void {
@@ -126,27 +118,31 @@ export function interactiveTrash(onExit: () => void): void {
     }
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr();
-      const e = entries[scrollTop + i]; if (!e) continue;
-      const isCursor = (scrollTop + i) === sel; const isSel = selected.has(e.id);
-      const icon = e.isDir ? chalk.blue("▸") : chalk.gray("·");
-      const date = new Date(e.trashedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      const dateStr = chalk.dim(date); const prefix = isSel ? chalk.magenta("✓ ") : "  ";
+      const e       = entries[scrollTop + i]; if (!e) continue;
+      const isCursor = (scrollTop + i) === sel;
+      const isSel    = selected.has(e.id);
+      const icon     = e.isDir ? "▸" : "·";
+      const date     = new Date(e.trashedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const from     = e.originalPath.replace(process.env.HOME ?? "", "~");
+      const prefix   = isSel ? "✓ " : "  ";
+
       if (isCursor && isSel) {
-        out += chalk.bgMagenta.white.bold(padOrTrim(` ${prefix}${icon} ${e.name}`, cols));
+        const leftW = cols - date.length - 2;
+        out += chalk.bgMagenta.white.bold(padOrTrim(` ${prefix}${icon} ${e.name}`, leftW) + "  ") + chalk.bgMagenta.white.bold(date);
       } else if (isCursor) {
-        const from = e.originalPath.replace(process.env.HOME ?? "", "~");
         const nameMax = Math.max(8, cols - date.length - 4 - Math.min(from.length + 12, Math.floor(cols * 0.35)));
-        const name = e.name.length > nameMax ? e.name.slice(0, nameMax - 1) + "…" : e.name;
-        const fromTr = from.length > Math.floor(cols * 0.35) - 12 ? from.slice(0, Math.floor(cols * 0.35) - 13) + "…" : from;
-        const left = ` ${prefix}${icon} ${name}`;
-        const pad = Math.max(0, cols - visibleLen(left) - date.length - visibleLen("  from: " + fromTr) - 2);
+        const name    = e.name.length > nameMax ? e.name.slice(0, nameMax - 1) + "…" : e.name;
+        const fromTr  = from.length > Math.floor(cols * 0.35) - 12 ? from.slice(0, Math.floor(cols * 0.35) - 13) + "…" : from;
+        const left    = ` ${prefix}${icon} ${name}`;
+        const pad     = Math.max(0, cols - visibleLen(left) - date.length - visibleLen("  from: " + fromTr) - 2);
         out += chalk.bgWhite.black.bold(left) + " ".repeat(pad) + chalk.bgWhite.black(date) + chalk.bgWhite.dim("  from: " + fromTr);
       } else if (isSel) {
-        const maxName = cols - date.length - 5; const name = e.name.length > maxName ? e.name.slice(0, maxName - 1) + "…" : e.name;
-        out += chalk.magenta(` ${prefix}${icon} ${name}`.padEnd(cols - date.length - 2)) + "  " + dateStr;
+        const leftW = cols - date.length - 2;
+        out += chalk.magenta.bold(padOrTrim(` ${prefix}${icon} ${e.name}`, leftW) + "  ") + chalk.magenta.bold(date);
       } else {
-        const maxName = cols - date.length - 4; const name = e.name.length > maxName ? e.name.slice(0, maxName - 1) + "…" : e.name;
-        out += (` ${icon} ${name}`).padEnd(cols - date.length - 2) + "  " + dateStr;
+        const maxName = cols - date.length - 4;
+        const name    = e.name.length > maxName ? e.name.slice(0, maxName - 1) + "…" : e.name;
+        out += (` ${icon} ${name}`).padEnd(cols - date.length - 2) + "  " + chalk.dim(date);
       }
     }
     w(out);
@@ -156,50 +152,31 @@ export function interactiveTrash(onExit: () => void): void {
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
 
   function doSort(): void {
-    process.stdout.removeListener("resize", onResize);
-    stdin.removeListener("data", onKey);
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     showSortPicker("trash", currentSort, R() - 2,
-      (result) => {
-        currentSort = result; applySort();
-        process.stdout.on("resize", onResize);
-        fullRedraw(); stdin.on("data", onKey);
-      },
+      (result) => { currentSort = result; applySort(); process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
   }
 
   function showConfirmDelete(targets: TrashEntry[], onBack: () => void): void {
     const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [
-      { key: "Y",     label: "Delete Forever (cannot undo)", color: "red"   },
-      { key: "N/Esc", label: "Cancel",                       color: "green" },
-    ];
+    const confirmNav: NavItem[] = [{ key: "Y", label: "Delete Forever (cannot undo)", color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
-      drawNavbar([confirmNav]);
-      let out = ""; let ln = 0;
+      drawNavbar([confirmNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
-        line(chalk.bold(`  Delete ${targets.length} items forever`));
-        line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+        line(chalk.bold(`  Delete ${targets.length} items forever`)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
         for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(t.name));
         if (targets.length > avail - 3) line(chalk.gray(`  ... and ${targets.length - (avail - 3)} more`));
       } else {
         const src = path.join(TRASH_DIR, targets[0].id);
-        line(chalk.bold((targets[0].isDir ? "  dir  " : "  file ") + targets[0].name));
-        line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+        line(chalk.bold((targets[0].isDir ? "  dir  " : "  file ") + targets[0].name)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
         if (targets[0].isDir) {
-          try {
-            const ch = fs.readdirSync(src, { withFileTypes: true });
-            if (!ch.length) { line(chalk.gray("  (empty directory)")); }
-            else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); }
-          } catch { line(chalk.red("  cannot read directory")); }
+          try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
         } else {
-          try {
-            const fl = fs.readFileSync(src, "utf8").split("\n");
-            for (const f of fl.slice(0, avail - 3)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); }
-            if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`));
-          } catch { line(chalk.gray("  (binary file)")); }
+          try { const fl = fs.readFileSync(src, "utf8").split("\n"); for (const f of fl.slice(0, avail - 3)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
         }
       }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
@@ -216,14 +193,10 @@ export function interactiveTrash(onExit: () => void): void {
 
   function showConfirmEmpty(): void {
     const total = entries.length;
-    const confirmNav: NavItem[] = [
-      { key: "Y",     label: `Empty Trash (${total} items)`, color: "red"   },
-      { key: "N/Esc", label: "Cancel",                       color: "green" },
-    ];
+    const confirmNav: NavItem[] = [{ key: "Y", label: `Empty Trash (${total} items)`, color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
-      drawNavbar([confirmNav]);
-      let out = ""; let ln = 0;
+      drawNavbar([confirmNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
       for (const e of entries.slice(0, avail - 2)) line((e.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(e.name));
@@ -244,30 +217,18 @@ export function interactiveTrash(onExit: () => void): void {
   function showPreview(entry: TrashEntry): void {
     const src = path.join(TRASH_DIR, entry.id);
     const previewNav: NavItem[] = [
-      { key: "Esc", label: "Back"           },
-      { key: "R",   label: "Restore"        },
-      { key: "X",   label: "Delete Forever" },
+      { key: "Esc", label: "Back" }, { key: "R", label: "Restore" }, { key: "X", label: "Delete Forever" },
       ...(entry.isDir ? [{ key: "O", label: "Browse Dir" } as NavItem] : []),
     ];
     function drawPreview(): void {
       const start = 3; const v = R() - 3;
-      drawNavbar([previewNav]);
-      let out = ""; let ln = 0;
+      drawNavbar([previewNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= v) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      line(chalk.bold((entry.isDir ? "  dir  " : "  file ") + entry.name));
-      line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+      line(chalk.bold((entry.isDir ? "  dir  " : "  file ") + entry.name)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
       if (entry.isDir) {
-        try {
-          const ch = fs.readdirSync(src, { withFileTypes: true });
-          if (!ch.length) { line(chalk.gray("  (empty directory)")); }
-          else { for (const c of ch.slice(0, v - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > v - 3) line(chalk.gray(`  ... and ${ch.length - (v - 3)} more`)); }
-        } catch { line(chalk.red("  cannot read directory")); }
+        try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, v - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > v - 3) line(chalk.gray(`  ... and ${ch.length - (v - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
       } else {
-        try {
-          const fl = fs.readFileSync(src, "utf8").split("\n");
-          for (const f of fl.slice(0, v - 2)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); }
-          if (fl.length > v - 2) line(chalk.gray(`  ... ${fl.length - (v - 2)} more lines`));
-        } catch { line(chalk.gray("  (binary file)")); }
+        try { const fl = fs.readFileSync(src, "utf8").split("\n"); for (const f of fl.slice(0, v - 2)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > v - 2) line(chalk.gray(`  ... ${fl.length - (v - 2)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
       }
       for (let i = ln; i < v; i++) out += at(start + i, 1) + clr();
       w(out); drawBottomBar(entry.name, "");
@@ -321,9 +282,8 @@ function browseDir(dirPath: string, label: string, stdin: NodeJS.ReadStream, onB
     for (let i = 0; i < v; i++) {
       out += at(start + i, 1) + clr(); const e = entries[scrollTop + i]; if (!e) continue;
       const active = (scrollTop + i) === sel;
-      const icon = e.isDir ? chalk.blue("▸ ") : chalk.gray("  ");
-      const padded = (icon + e.name).padEnd(cols - 2);
-      out += active ? " " + chalk.bgWhite.black.bold(padded) : " " + (e.isDir ? chalk.blue(padded) : chalk.white(padded));
+      const raw = " " + (e.isDir ? "▸ " : "  ") + e.name;
+      out += active ? chalk.bgWhite.black.bold(padOrTrim(raw, cols)) : (e.isDir ? chalk.blue(raw) : chalk.white(raw));
     }
     w(out);
   }
@@ -358,8 +318,6 @@ function browseFile(filePath: string, name: string, stdin: NodeJS.ReadStream, on
   function render(): void { drawNavbar([nav]); drawContent(); drawBottomBar(name, ""); }
   const onFR = () => { clearScreen(); render(); };
   process.stdout.on("resize", onFR);
-  function onKey(k: string): void {
-    if (k === "\u001b" || k === "\u0003" || k === "q") { stdin.removeListener("data", onKey); process.stdout.removeListener("resize", onFR); onBack(); }
-  }
+  function onKey(k: string): void { if (k === "\u001b" || k === "\u0003" || k === "q") { stdin.removeListener("data", onKey); process.stdout.removeListener("resize", onFR); onBack(); } }
   stdin.on("data", onKey); clearScreen(); render();
 }

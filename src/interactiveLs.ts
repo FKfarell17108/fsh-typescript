@@ -433,7 +433,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (visCount + cWidth > lw) break;
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
-        else if (isSel)             line += chalk.magenta(cell);
+        else if (isSel)             line += chalk.magenta.bold(cell);
         else if (itemAction)        line += cellActionStyle(itemAction, cell, isDir, hidden);
         else if (isDir)             line += hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
         else                        line += hidden ? chalk.gray(cell) : chalk.white(cell);

@@ -6,7 +6,7 @@ import { deleteCommandEvents, deleteAllCommandEvents } from "./generalHistory";
 
 export const HISTORY_FILE = path.join(process.env.HOME ?? "~", ".fsh_history");
 export const HISTORY_SIZE = 500;
-export type HistoryEntry = { cmd: string; ts: number };
+export type HistoryEntry  = { cmd: string; ts: number };
 export type HistoryResult = { kind: "selected"; cmd: string; entries: HistoryEntry[] } | { kind: "closed"; entries: HistoryEntry[] };
 
 export function loadHistoryEntries(): HistoryEntry[] {
@@ -31,6 +31,7 @@ export function saveHistoryEntries(entries: HistoryEntry[]): void {
 }
 
 export function entriesToStrings(entries: HistoryEntry[]): string[] { return entries.map(e => e.cmd); }
+
 export function pushEntry(entries: HistoryEntry[], cmd: string): HistoryEntry[] {
   return [{ cmd, ts: Date.now() }, ...entries.filter(e => e.cmd !== cmd)].slice(0, HISTORY_SIZE);
 }
@@ -40,7 +41,13 @@ type Bucket = { label: string; entries: HistoryEntry[] };
 function groupByTime(entries: HistoryEntry[]): Bucket[] {
   const now = Date.now(); const d = new Date(); d.setHours(0, 0, 0, 0);
   const today = d.getTime(); const yesterday = today - 86_400_000; const week = today - 7 * 86_400_000;
-  const buckets: Bucket[] = [{ label: "Last hour", entries: [] }, { label: "Today", entries: [] }, { label: "Yesterday", entries: [] }, { label: "This week", entries: [] }, { label: "Older", entries: [] }];
+  const buckets: Bucket[] = [
+    { label: "Last hour",  entries: [] },
+    { label: "Today",      entries: [] },
+    { label: "Yesterday",  entries: [] },
+    { label: "This week",  entries: [] },
+    { label: "Older",      entries: [] },
+  ];
   for (const e of entries) {
     const age = now - e.ts;
     if      (e.ts === 0 || e.ts < week) buckets[4].entries.push(e);
@@ -56,9 +63,9 @@ type Row = { kind: "header"; bucketIdx: number } | { kind: "entry"; entry: Histo
 
 export function showHistoryManager(entries: HistoryEntry[], onDone: (result: HistoryResult) => void): void {
   const stdin = process.stdin;
-  let active = true;
   if (entries.length === 0) { console.log(chalk.gray("  (no command history)")); return onDone({ kind: "closed", entries }); }
-  const buckets = groupByTime(entries); let selected = new Set<string>();
+  const buckets = groupByTime(entries);
+  let selected = new Set<string>();
 
   function buildRows(): Row[] {
     const r: Row[] = [];
@@ -69,13 +76,13 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
 
   function NAV(): NavRows {
     return [[
-      { key: "Nav", label: "Navigate"},
-      { key: "Spc", label: "Select"},
-      { key: "A", label: "Select All"},
+      { key: "Nav", label: "Navigate"   },
+      { key: "Spc", label: "Select"     },
+      { key: "A",   label: "Select All" },
       { key: "Ent", label: "Use Command"},
-      { key: "X", label: "Delete" },
-      { key: "D", label: "Delete All"},
-      { key: "Esc", label: selected.size > 0 ? "Deselect" : "Close"},
+      { key: "X",   label: "Delete"     },
+      { key: "D",   label: "Delete All" },
+      { key: "Esc", label: selected.size > 0 ? "Deselect" : "Close" },
     ]];
   }
   const NR = 2;
@@ -83,37 +90,63 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function totalCmds(): number { return buckets.reduce((s, b) => s + b.entries.length, 0); }
   function adjustScroll(): void { const v = vis(); if (cursor < scrollTop) scrollTop = cursor; if (cursor >= scrollTop + v) scrollTop = cursor - v + 1; }
+
   function toggleSelect(): void {
     const row = allRows[cursor]; if (!row) return;
-    if (row.kind === "header") { const b = buckets[row.bucketIdx]; const allSel = b.entries.every(e => selected.has(e.cmd)); if (allSel) b.entries.forEach(e => selected.delete(e.cmd)); else b.entries.forEach(e => selected.add(e.cmd)); }
-    else { const cmd = row.entry.cmd; if (selected.has(cmd)) selected.delete(cmd); else selected.add(cmd); }
+    if (row.kind === "header") {
+      const b = buckets[row.bucketIdx];
+      const allSel = b.entries.every(e => selected.has(e.cmd));
+      if (allSel) b.entries.forEach(e => selected.delete(e.cmd));
+      else b.entries.forEach(e => selected.add(e.cmd));
+    } else {
+      const cmd = row.entry.cmd;
+      if (selected.has(cmd)) selected.delete(cmd); else selected.add(cmd);
+    }
   }
-  function selectAll(): void { const all = buckets.flatMap(b => b.entries).map(e => e.cmd); if (selected.size === all.length) selected.clear(); else selected = new Set(all); }
+
+  function selectAll(): void {
+    const all = buckets.flatMap(b => b.entries).map(e => e.cmd);
+    if (selected.size === all.length) selected.clear(); else selected = new Set(all);
+  }
 
   function buildLeft(): string {
     const n = totalCmds(); let s = `History  ${n} command${n === 1 ? "" : "s"}`;
-    if (selected.size) s += chalk.magenta(`  ${selected.size} sel`); return s;
+    if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
+    return s;
   }
   function buildRight(): string { if (allRows.length <= vis()) return ""; const more = allRows.length - (scrollTop + vis()); return more > 0 ? `↓ ${more} more` : "end"; }
 
   function drawContent(): void {
     const start = NR + 2; const cols = C(); const v = vis(); let out = "";
     for (let i = 0; i < v; i++) {
-      out += at(start + i, 1) + clr(); const row = allRows.slice(scrollTop, scrollTop + v)[i]; if (!row) continue;
-      const active = (scrollTop + i) === cursor;
+      out += at(start + i, 1) + clr();
+      const row = allRows.slice(scrollTop, scrollTop + v)[i]; if (!row) continue;
+      const isActive = (scrollTop + i) === cursor;
+
       if (row.kind === "header") {
-        const b = buckets[row.bucketIdx]; const allSel = b.entries.length > 0 && b.entries.every(e => selected.has(e.cmd));
-        const prefix = allSel ? chalk.magenta("✓ ") : "  "; const label = prefix + b.label + "  (" + b.entries.length + " commands)";
-        out += active ? (allSel ? chalk.bgMagenta.white.bold(label.padEnd(cols)) : chalk.bgYellow.black.bold(label.padEnd(cols))) : (allSel ? chalk.magenta(label) : chalk.yellow.bold(label));
+        const b      = buckets[row.bucketIdx];
+        const allSel = b.entries.length > 0 && b.entries.every(e => selected.has(e.cmd));
+        const prefix = allSel ? "✓ " : "  ";
+        const raw    = prefix + b.label + "  (" + b.entries.length + " commands)";
+        if      (isActive && allSel) out += chalk.bgMagenta.white.bold(padOrTrim("  " + raw, cols));
+        else if (isActive)           out += chalk.bgYellow.black.bold(padOrTrim("  " + raw, cols));
+        else if (allSel)             out += chalk.magenta.bold("  " + raw);
+        else                         out += chalk.yellow.bold("  " + raw);
       } else {
-        const { cmd, ts } = row.entry; const isSel = selected.has(cmd);
-        const timeStr = ts ? chalk.gray(new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })) : "     ";
-        const maxCmd = cols - 12; const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
-        const prefix = isSel ? "✓   " : "    "; const padded = (prefix + display).padEnd(cols - 7);
-        if      (active && isSel) out += chalk.bgMagenta.white.bold(padded) + "  " + timeStr;
-        else if (active)          out += chalk.bgWhite.black.bold(padded)   + "  " + timeStr;
-        else if (isSel)           out += chalk.magenta(padded)              + "  " + timeStr;
-        else                      out += chalk.white(padded)                + "  " + timeStr;
+        const { cmd, ts } = row.entry;
+        const isSel   = selected.has(cmd);
+        const timeStr = ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "     ";
+        const maxCmd  = cols - 12;
+        const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
+        const prefix  = isSel ? "✓   " : "    ";
+        const raw     = prefix + display;
+        const timeLen = timeStr.length;
+        const leftW   = cols - timeLen - 2;
+
+        if      (isActive && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(raw, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
+        else if (isActive)          out += chalk.bgWhite.black.bold(padOrTrim(raw, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);
+        else if (isSel)             out += chalk.magenta.bold(padOrTrim(raw, leftW) + "  ") + chalk.magenta.bold(timeStr);
+        else                        out += chalk.white(raw.padEnd(leftW)) + "  " + chalk.dim(timeStr);
       }
     }
     w(out);
@@ -126,17 +159,31 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
   function exitSelected(cmd: string): void { cleanup(); const remaining = buckets.flatMap(b => b.entries); setTimeout(() => onDone({ kind: "selected", cmd, entries: remaining }), 20); }
 
   function deleteAtCursor(): void {
-    if (!allRows.length) return; const row = allRows[cursor]; let toDelete: string[] = [];
-    if (selected.size > 0) { toDelete = Array.from(selected); buckets.forEach(b => { b.entries = b.entries.filter(e => !selected.has(e.cmd)); }); selected.clear(); }
-    else if (row.kind === "header") { toDelete = buckets[row.bucketIdx].entries.map(e => e.cmd); buckets[row.bucketIdx].entries = []; }
-    else { toDelete = [row.entry.cmd]; buckets[row.bucketIdx].entries = buckets[row.bucketIdx].entries.filter(e => e.cmd !== row.entry.cmd); }
+    if (!allRows.length) return;
+    const row = allRows[cursor]; let toDelete: string[] = [];
+    if (selected.size > 0) {
+      toDelete = Array.from(selected);
+      buckets.forEach(b => { b.entries = b.entries.filter(e => !selected.has(e.cmd)); });
+      selected.clear();
+    } else if (row.kind === "header") {
+      toDelete = buckets[row.bucketIdx].entries.map(e => e.cmd);
+      buckets[row.bucketIdx].entries = [];
+    } else {
+      toDelete = [row.entry.cmd];
+      buckets[row.bucketIdx].entries = buckets[row.bucketIdx].entries.filter(e => e.cmd !== row.entry.cmd);
+    }
     for (const cmd of toDelete) deleteCommandEvents(cmd);
-    allRows = buildRows(); if (!allRows.length) return exitClosed(); cursor = Math.min(cursor, allRows.length - 1); adjustScroll(); render();
+    allRows = buildRows();
+    if (!allRows.length) return exitClosed();
+    cursor = Math.min(cursor, allRows.length - 1); adjustScroll(); render();
   }
 
   function showConfirmDeleteAll(): void {
     const total = totalCmds();
-    const confirmNav: NavItem[] = [{ key: "Y", label: `Delete all ${total} commands`, color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
+    const confirmNav: NavItem[] = [
+      { key: "Y", label: `Delete all ${total} commands`, color: "red" },
+      { key: "N/Esc", label: "Cancel", color: "green" },
+    ];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3;
       drawNavbar([confirmNav]); let out = ""; let ln = 0;
@@ -148,10 +195,17 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
       w(out); drawBottomBar(`${total} entries will be permanently deleted`, "");
     }
     process.stdout.removeListener("resize", onResize);
-    const onCR = () => { clearScreen(); drawConfirm(); }; process.stdout.on("resize", onCR); stdin.removeListener("data", onKey); clearScreen(); drawConfirm();
+    const onCR = () => { clearScreen(); drawConfirm(); };
+    process.stdout.on("resize", onCR); stdin.removeListener("data", onKey); clearScreen(); drawConfirm();
     stdin.on("data", function onConfirm(k: string) {
-      if (k === "y" || k === "Y") { stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); buckets.forEach(b => { b.entries = []; }); deleteAllCommandEvents(); return exitClosed(); }
-      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+      if (k === "y" || k === "Y") {
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+        buckets.forEach(b => { b.entries = []; }); deleteAllCommandEvents(); return exitClosed();
+      }
+      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
+        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+        process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey);
+      }
     });
   }
 
@@ -167,6 +221,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
     if (raw === "x" || raw === "\x7f") { deleteAtCursor(); return; }
     if (raw === "\r") { const row = allRows[cursor]; if (row?.kind === "entry") exitSelected(row.entry.cmd); }
   }
-  process.stdout.on("resize", onResize); stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
+  process.stdout.on("resize", onResize);
+  stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
   enterAlt(); fullRedraw();
 }
