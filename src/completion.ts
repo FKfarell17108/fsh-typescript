@@ -7,7 +7,7 @@ import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt
 const BUILTINS = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
   "alias", "unalias", "clear", "history", "trash", "fshrc", "neofetch",
-  "bookmarks", "search",
+  "bookmarks", "search", "helps",
 ];
 
 export function getCandidates(line: string): { candidates: string[]; partial: string } {

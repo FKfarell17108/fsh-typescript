@@ -13,11 +13,12 @@ import { showBookmarkPicker } from "./bookmarkPicker";
 import { loadBookmarks } from "./bookmarks";
 import { showSearch } from "./search";
 import { loadHistoryEntries } from "./historyManager";
+import { showHelps } from "./helps";
 
 const builtins = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
   "alias", "unalias", "clear", "history", "fshrc", "trash", "neofetch",
-  "bookmarks", "search",
+  "bookmarks", "search", "helps",
 ];
 
 export function handleBuiltin(
@@ -26,6 +27,11 @@ export function handleBuiltin(
   done: () => void
 ): boolean {
   switch (cmd) {
+    case "helps":
+      pauseInput();
+      showHelps(() => resumeInput());
+      return true;
+
     case "neofetch":
       handleNeofetch(args);
       done();
