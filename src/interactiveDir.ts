@@ -34,9 +34,7 @@ function actionColor(kind: ActionKind): (s: string) => string {
 
 function actionLabel(kind: ActionKind, name: string): string {
   if (!kind) return "";
-  const color = actionColor(kind);
-  const kindStr = kind.charAt(0).toUpperCase() + kind.slice(1);
-  return color(`${kindStr}: `) + chalk.white(name);
+  return actionColor(kind)(`${kind.charAt(0).toUpperCase() + kind.slice(1)}: `) + chalk.white(name);
 }
 
 function cellActionStyle(kind: ActionKind, cell: string, hidden: boolean): string {
@@ -70,7 +68,7 @@ export function interactiveDir(onExit: () => void): void {
 
   let entries = visibleEntries();
 
-  if (!process.stdin.isTTY) { console.log(entries.map(e => e.name).join("  ")); return onExit(); }
+  if (!process.stdin.isTTY) { console.log(entries.map(e => e.name + "/").join("  ")); return onExit(); }
   if (allEntries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
   if (entries.length === 0 && allEntries.length > 0) { showHidden = true; entries = visibleEntries(); }
   if (entries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
@@ -101,23 +99,17 @@ export function interactiveDir(onExit: () => void): void {
 
   function isItemActive(name: string): ActionKind {
     const cb = getClipboard() as any;
-    if (moveModePending) {
-      if (moveModePending.srcNames.includes(name)) return "move";
-    }
+    if (moveModePending && moveModePending.srcNames.includes(name)) return "move";
     if (cb) {
-      if (cb.items) {
-        if (cb.items.some((it: any) => it.srcPath === path.join(cwd, name))) return cb.kind as ActionKind;
-      } else {
-        if (cb.srcPath === path.join(cwd, name)) return cb.kind as ActionKind;
-      }
+      if (cb.items) { if (cb.items.some((it: any) => it.srcPath === path.join(cwd, name))) return cb.kind as ActionKind; }
+      else { if (cb.srcPath === path.join(cwd, name)) return cb.kind as ActionKind; }
     }
     return null;
   }
 
   function refreshPreview(): void {
     if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
-    const full = path.join(cwd, entries[selIdx].name);
-    updatePreview(pvState, full);
+    updatePreview(pvState, path.join(cwd, entries[selIdx].name));
   }
 
   function togglePreviewPref(): void {
@@ -132,39 +124,39 @@ export function interactiveDir(onExit: () => void): void {
     const mode = getPreviewMode(previewPref);
     if (browseMode) {
       return [[
-        { key: "Nav", label: "Navigate" },
-        { key: "Ent", label: "Open/Enter" },
-        { key: "Tab", label: "Parent" },
-        { key: "Esc", label: "Back to List" },
+        { key: "Nav", label: "Navigate"    },
+        { key: "Ent", label: "Open/Enter"  },
+        { key: "Tab", label: "Parent"      },
+        { key: "Esc", label: "Back to List"},
       ]];
     }
     if (moveModePending) {
       return [[
-        { key: "Nav", label: "Navigate" },
-        { key: "Ent", label: "Enter Dir" },
-        { key: "Tab", label: "Parent" },
+        { key: "Nav", label: "Navigate"                                 },
+        { key: "Ent", label: "Enter Dir"                                },
+        { key: "Tab", label: "Parent"                                   },
         { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
     return [
       [
-        { key: "Nav", label: "Navigate" },
-        { key: "Spc", label: "Select" },
-        { key: "A",   label: "All" },
+        { key: "Nav", label: "Navigate"  },
+        { key: "Spc", label: "Select"    },
+        { key: "A",   label: "All"       },
         { key: "Ent", label: "Enter Dir" },
-        { key: "Tab", label: "Parent" },
-        { key: "O",   label: "Browse" },
+        { key: "Tab", label: "Parent"    },
+        { key: "O",   label: "Browse"    },
         { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
         { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
       [
-        { key: "C", label: "Copy" },
-        { key: "X", label: "Cut" },
-        { key: "V", label: "Paste" },
+        { key: "C", label: "Copy"   },
+        { key: "X", label: "Cut"    },
+        { key: "V", label: "Paste"  },
         { key: "R", label: "Rename" },
-        { key: "M", label: "Move" },
+        { key: "M", label: "Move"   },
         { key: "D", label: "Delete" },
-        { key: "H", label: "History" },
+        { key: "H", label: "History"},
         { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ],
     ];
@@ -204,9 +196,7 @@ export function interactiveDir(onExit: () => void): void {
           allEntries = loadDirs(cwd); entries = visibleEntries();
           const idx = entries.findIndex(e => e.name === name);
           selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
-          adjustScroll(); refreshPreview();
-          showStatus(`  Created folder: ${name}`);
-          fullRedraw();
+          adjustScroll(); refreshPreview(); showStatus(`  Created folder: ${name}/`); fullRedraw();
         } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
         stdin.on("data", onKey);
       },
@@ -222,26 +212,23 @@ export function interactiveDir(onExit: () => void): void {
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
         const full = path.join(cwd, name);
         if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
-        try {
-          fs.writeFileSync(full, "", "utf8");
-          showStatus(`  Created file: ${name}`);
-        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); stdin.on("data", onKey); return; }
-        allEntries = loadDirs(cwd); entries = visibleEntries();
-        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
+        try { fs.writeFileSync(full, "", "utf8"); showStatus(`  Created file: ${name}`); }
+        catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); stdin.on("data", onKey); return; }
+        allEntries = loadDirs(cwd); entries = visibleEntries(); adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
   }
 
   function browseNavigate(delta: number): void {
-    const browseEntries = getDirEntries(pvState.content!); if (!browseEntries.length) return;
-    browseIdx = Math.max(0, Math.min(browseEntries.length - 1, browseIdx + delta));
+    const be = getDirEntries(pvState.content!); if (!be.length) return;
+    browseIdx = Math.max(0, Math.min(be.length - 1, browseIdx + delta));
     syncBrowseScroll(); renderPreview(); drawBottom();
   }
 
   function browseEnter(): void {
-    const browseEntries = getDirEntries(pvState.content!); if (!browseEntries.length) return;
-    const entry = browseEntries[browseIdx];
+    const be = getDirEntries(pvState.content!); if (!be.length) return;
+    const entry = be[browseIdx];
     const resolvedFull = path.join(pvState.path, entry.name);
     if (entry.isDir) {
       browseStack.push({ path: pvState.path, idx: browseIdx, scrollTop: pvState.scrollTop });
@@ -264,7 +251,7 @@ export function interactiveDir(onExit: () => void): void {
   function cw(): number {
     const lw = effectiveListW();
     if (!entries.length) return 16;
-    return Math.min(Math.max(...entries.map(e => e.name.length)) + 4, Math.floor(lw / 2));
+    return Math.min(Math.max(...entries.map(e => e.name.length + 1)) + 4, Math.floor(lw / 2));
   }
   function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
@@ -280,21 +267,13 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function drawMiniBar(): void {
-    if (browseMode || moveModePending) {
-      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m");
-      return;
-    }
+    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
     const cols  = C();
-    const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
-    const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
-    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
-    const nPart = nKey + chalk.dim(" New Folder");
-    const tPart = tKey + chalk.dim(" New File");
-    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
-    const line  = "  " + nPart + "    " + tPart + "    " + sPart;
+    const line  = "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+                  "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
+                  "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
     const vl    = visibleLen(line);
-    const pad   = vl < cols ? " ".repeat(cols - vl) : "";
-    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + pad);
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function navigate(key: string): boolean {
@@ -322,17 +301,15 @@ export function interactiveDir(onExit: () => void): void {
     let s = rel; s += `  ${entries.length}d`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
-    const activeLabel = getActiveActionLabel();
-    if (activeLabel) s += "    " + activeLabel;
+    const al = getActiveActionLabel();
+    if (al) s += "    " + al;
     return s;
   }
 
   function buildRight(): string {
     const mode    = getPreviewMode(previewPref);
-    const modeStr = browseMode
-      ? chalk.cyan(" [browse]")
-      : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
-    const pgHint = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
+    const modeStr = browseMode ? chalk.cyan(" [browse]") : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
+    const pgHint  = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
     if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
     return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
@@ -341,11 +318,10 @@ export function interactiveDir(onExit: () => void): void {
   function drawMoveConfirmBar(): void {
     if (!moveModePending) return;
     const cols  = C();
-    const label  = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label);
-    const btnY   = "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here");
-    const btnEsc = "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
-    const line   = label + btnY + btnEsc;
-    const vl     = visibleLen(line);
+    const line  = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label) +
+                  "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here") +
+                  "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
+    const vl    = visibleLen(line);
     w(at(R() - 1, 1) + "\x1b[2K\x1b[0m");
     w(at(R(), 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
@@ -383,13 +359,14 @@ export function interactiveDir(onExit: () => void): void {
       for (let col = 0; col < p; col++) {
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, hidden } = entries[i];
-        const isCursor = i === selIdx; const isSel = selected.has(name);
+        const isCursor   = i === selIdx; const isSel = selected.has(name);
         const itemAction = isItemActive(name);
-        const prefix   = isSel ? "✓ " : "  ";
-        const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
+        const dispName   = name + "/";
+        const prefix     = isSel ? "✓ " : "  ";
+        const maxNameW   = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
-        const truncName = name.length > maxNameW ? name.slice(0, maxNameW - 1) + "…" : name;
-        const cell      = (prefix + truncName).padEnd(cWidth, " ").slice(0, cWidth);
+        const truncDisp  = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
+        const cell       = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
         if (visCount + cWidth > lw) break;
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
@@ -399,9 +376,7 @@ export function interactiveDir(onExit: () => void): void {
         else                        line += chalk.blue.bold(cell);
         visCount += cWidth;
       }
-      const padNeeded = Math.max(0, lw - visCount);
-      line += " ".repeat(padNeeded);
-      out += at(start + row, 1) + "\x1b[2K" + line;
+      out += at(start + row, 1) + "\x1b[2K" + line + " ".repeat(Math.max(0, lw - visCount));
     }
     w(out);
   }
@@ -442,7 +417,7 @@ export function interactiveDir(onExit: () => void): void {
   function doMoveInit(): void {
     const targets = getTargets(); if (!targets.length) return;
     const items = targets.map(t => ({ srcPath: path.join(cwd, t.name), srcName: t.name }));
-    const label = items.length === 1 ? items[0].srcName : `${items.length} dirs`;
+    const label = items.length === 1 ? items[0].srcName + "/" : `${items.length} dirs`;
     moveModePending = { srcPaths: items.map(i => i.srcPath), srcNames: items.map(i => i.srcName), label };
     selected.clear(); clearClipboard(); fullRedraw();
   }
@@ -451,21 +426,12 @@ export function interactiveDir(onExit: () => void): void {
     if (!moveModePending) return;
     const { srcPaths, srcNames } = moveModePending;
     let errors = 0;
-    for (let i = 0; i < srcPaths.length; i++) {
-      const err = execMove(srcPaths[i], uniqueDest(cwd, srcNames[i]));
-      if (err) errors++;
-    }
-    const label = moveModePending.label;
-    moveModePending = null;
+    for (let i = 0; i < srcPaths.length; i++) { const err = execMove(srcPaths[i], uniqueDest(cwd, srcNames[i])); if (err) errors++; }
+    const label = moveModePending.label; moveModePending = null;
     if (errors > 0) showStatus(`  ${errors} error(s) during move`, true);
-    else {
-      const home = process.env.HOME ?? "";
-      const rel  = cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
-      showStatus(`  Moved: ${label}  →  ${rel}`);
-    }
+    else { const home = process.env.HOME ?? ""; showStatus(`  Moved: ${label}  →  ${cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd}`); }
     allEntries = loadDirs(cwd); entries = visibleEntries();
-    selIdx = Math.min(selIdx, Math.max(0, entries.length - 1));
-    adjustScroll(); refreshPreview(); fullRedraw();
+    selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); refreshPreview(); fullRedraw();
   }
 
   function doRename(): void {
@@ -479,7 +445,7 @@ export function interactiveDir(onExit: () => void): void {
         if (!newName || newName === e.name) { fullRedraw(); stdin.on("data", onKey); return; }
         if (fs.existsSync(path.join(cwd, newName))) { showStatus(`  '${newName}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
         const err = execRename(full, newName);
-        if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}  →  ${newName}`);
+        if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}/  →  ${newName}/`);
         selected.clear(); allEntries = loadDirs(cwd); entries = visibleEntries();
         const idx = entries.findIndex(e2 => e2.name === newName);
         selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
@@ -522,20 +488,19 @@ export function interactiveDir(onExit: () => void): void {
     const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash", color: "yellow" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
-      drawNavbar([confirmNav]);
-      let out = ""; let ln = 0;
+      drawNavbar([confirmNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
         line(chalk.bold(`  Move ${targets.length} dirs to trash`)); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        for (const t of targets.slice(0, avail - 3)) line(chalk.blue("  ▸ ") + chalk.white(t.name));
+        for (const t of targets.slice(0, avail - 3)) line(chalk.blue("  ▸ ") + chalk.white(t.name + "/"));
         if (targets.length > avail - 3) line(chalk.gray(`  ... and ${targets.length - (avail - 3)} more`));
       } else {
         const full = path.join(cwd, targets[0].name);
-        line(chalk.bold("  dir  " + targets[0].name)); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
+        line(chalk.bold("  dir  " + targets[0].name + "/")); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
         try {
           const ch = fs.readdirSync(full, { withFileTypes: true });
           if (!ch.length) { line(chalk.gray("  (empty directory)")); }
-          else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); }
+          else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name + (c.isDirectory() ? "/" : ""))); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); }
         } catch { line(chalk.red("  cannot read directory")); }
       }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
@@ -563,11 +528,8 @@ export function interactiveDir(onExit: () => void): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     showSortPicker("dir", currentSort, R() - 2,
       (result) => {
-        currentSort = result;
-        process.stdout.on("resize", onResize);
-        const prev = entries[selIdx]?.name;
-        allEntries = loadDirs(cwd); entries = visibleEntries();
-        selIdx = 0;
+        currentSort = result; process.stdout.on("resize", onResize);
+        const prev = entries[selIdx]?.name; allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = 0;
         if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
         adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },

@@ -16,6 +16,7 @@ const CATEGORY_LABEL: Record<ResultKind, string> = { history: "Command history",
 const CATEGORY_ICON: Record<ResultKind, string> = { history: "  ", dir: "▸ ", file: "  ", builtin: "  ", alias: "⚡ ", executable: "  " };
 
 function shortenPath(p: string): string { const home = process.env.HOME ?? ""; return p.startsWith(home) ? "~" + p.slice(home.length) : p; }
+
 function fuzzyScore(query: string, target: string): number {
   if (query === "") return 1; const q = query.toLowerCase(); const t = target.toLowerCase();
   if (t === q) return 100; if (t.startsWith(q)) return 80; if (t.includes(q)) return 60;
@@ -23,7 +24,9 @@ function fuzzyScore(query: string, target: string): number {
   for (let ti = 0; ti < t.length && qi < q.length; ti++) { if (t[ti] === q[qi]) { consecutive++; score += 10 + consecutive * 2; qi++; } else consecutive = 0; }
   if (qi < q.length) return 0; return score;
 }
+
 function getInstalledEditors(): string[] { return EDITOR_CANDIDATES.filter(e => { try { execFileSync("which", [e], { stdio: "ignore" }); return true; } catch { return false; } }); }
+
 const SKIP_DIRS = new Set(["node_modules", ".git", ".svn", ".hg", "dist", "build", "out", ".next", ".nuxt", "__pycache__", ".pytest_cache", ".mypy_cache", ".cache", ".npm", ".yarn", "proc", "sys", "dev"]);
 
 function searchFilesystem(query: string, rootDirs: string[], maxResults = 40): SearchResult[] {
@@ -32,53 +35,70 @@ function searchFilesystem(query: string, rootDirs: string[], maxResults = 40): S
     if (depth > 4 || results.length > maxResults * 2) return; if (visited.has(dir)) return; visited.add(dir);
     let entries: fs.Dirent[]; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
-      if (e.name.startsWith(".") && depth > 1) continue; const score = fuzzyScore(query, e.name);
-      if (score > 0) { const full = path.join(dir, e.name); results.push({ r: { kind: e.isDirectory() ? "dir" : "file", value: e.name, display: e.name, sub: shortenPath(dir), fullPath: full }, score }); }
+      if (e.name.startsWith(".") && depth > 1) continue;
+      const score = fuzzyScore(query, e.name);
+      if (score > 0) {
+        const full    = path.join(dir, e.name);
+        const isDir   = e.isDirectory();
+        const display = isDir ? e.name + "/" : e.name;
+        results.push({ r: { kind: isDir ? "dir" : "file", value: e.name, display, sub: shortenPath(dir), fullPath: full }, score });
+      }
       if (e.isDirectory() && !SKIP_DIRS.has(e.name)) walk(path.join(dir, e.name), depth + 1);
     }
   }
   for (const root of rootDirs) walk(root, 0);
   return results.sort((a, b) => b.score - a.score).slice(0, maxResults).map(x => x.r);
 }
+
 function searchHistory(query: string, entries: HistoryEntry[]): SearchResult[] {
   return entries.map(e => ({ e, score: fuzzyScore(query, e.cmd) })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 20)
     .map(({ e }) => ({ kind: "history" as ResultKind, value: e.cmd, display: e.cmd, fullPath: "", sub: e.ts ? new Date(e.ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "" }));
 }
+
 function searchExecutables(query: string): SearchResult[] {
   if (query.length < 2) return []; const seen = new Set<string>(); const hits: { name: string; score: number; dir: string }[] = [];
-  for (const dir of (process.env.PATH ?? "").split(":")) { try { for (const entry of fs.readdirSync(dir)) { const score = fuzzyScore(query, entry); if (score > 0 && !seen.has(entry)) { seen.add(entry); hits.push({ name: entry, score, dir }); } } } catch { } }
+  for (const dir of (process.env.PATH ?? "").split(":")) { try { for (const entry of fs.readdirSync(dir)) { const score = fuzzyScore(query, entry); if (score > 0 && !seen.has(entry)) { seen.add(entry); hits.push({ name: entry, score, dir }); } } } catch {} }
   return hits.sort((a, b) => b.score - a.score).slice(0, 15).map(h => ({ kind: "executable" as ResultKind, value: h.name, display: h.name, fullPath: path.join(h.dir, h.name), sub: shortenPath(h.dir) }));
 }
+
 function searchBuiltins(query: string): SearchResult[] { return BUILTINS.filter(b => fuzzyScore(query, b) > 0).map(b => ({ kind: "builtin" as ResultKind, value: b, display: b, fullPath: "", sub: "fsh builtin" })); }
 function searchAliases(query: string): SearchResult[] { const results: SearchResult[] = []; for (const [name, val] of getAllAliases()) { if (fuzzyScore(query, name) > 0) results.push({ kind: "alias" as ResultKind, value: name, display: name, fullPath: "", sub: val }); } return results; }
 
 type Row = { kind: "header"; category: ResultKind; count: number } | { kind: "result"; result: SearchResult };
+
 function buildRows(grouped: Map<ResultKind, SearchResult[]>): Row[] {
   const rows: Row[] = [];
   for (const cat of CATEGORY_ORDER) { const items = grouped.get(cat); if (!items || !items.length) continue; rows.push({ kind: "header", category: cat, count: items.length }); for (const r of items) rows.push({ kind: "result", result: r }); }
   return rows;
 }
+
 function kindColor(kind: ResultKind, hidden = false): (s: string) => string {
-  switch (kind) { case "history": return chalk.white; case "dir": return hidden ? chalk.cyan : chalk.blue.bold; case "file": return hidden ? chalk.gray : chalk.white; case "builtin": return chalk.green.bold; case "alias": return chalk.green; case "executable": return chalk.hex("#C3E88D"); }
+  switch (kind) {
+    case "history":    return chalk.white;
+    case "dir":        return hidden ? chalk.cyan : chalk.blue.bold;
+    case "file":       return hidden ? chalk.gray : chalk.white;
+    case "builtin":    return chalk.green.bold;
+    case "alias":      return chalk.green;
+    case "executable": return chalk.hex("#C3E88D");
+  }
 }
 
 export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: string) => void, onCancel: () => void): void {
   const stdin = process.stdin;
-  let active = true; let query = ""; let selIdx = 0; let scrollTop = 0; let rows: Row[] = [];
+  let query = ""; let selIdx = 0; let scrollTop = 0; let rows: Row[] = [];
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   const home = process.env.HOME ?? ""; const cwd = process.cwd(); const rootDirs = Array.from(new Set([cwd, home])).filter(Boolean);
 
   const NAV: NavItem[] = [
     { key: "Nav", label: "Navigate"},
-    { key: "Ent", label: "Select"},
-    { key: "Esc", label: "Cancel" },
+    { key: "Ent", label: "Select"  },
+    { key: "Esc", label: "Cancel"  },
   ];
 
   function NR(): number { return 2; }
   function searchBarRow(): number { return NR() + 1; }
   function vis(): number { return Math.max(1, R() - NR() - 3); }
   function contentStart(): number { return NR() + 2; }
-
   function adjustScroll(): void { const v = vis(); if (selIdx < scrollTop) scrollTop = selIdx; if (selIdx >= scrollTop + v) scrollTop = selIdx - v + 1; }
 
   function runSearch(): void {
@@ -116,8 +136,10 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
         const label = `  ${CATEGORY_LABEL[row.category]}  (${row.count})`;
         out += active ? chalk.bgYellow.black.bold(label.padEnd(cols)) : chalk.yellow.bold(label);
       } else {
-        const r = row.result; const icon = CATEGORY_ICON[r.kind]; const hidden = r.display.startsWith(".");
-        const color = kindColor(r.kind, hidden); const subLen = visibleLen(r.sub);
+        const r = row.result; const icon = CATEGORY_ICON[r.kind];
+        const hidden = r.display.startsWith(".");
+        const color  = kindColor(r.kind, hidden);
+        const subLen = visibleLen(r.sub);
         const maxDisp = Math.max(8, cols - icon.length - subLen - 6);
         const display = r.display.length > maxDisp ? r.display.slice(0, maxDisp - 1) + "…" : r.display;
         const left = ("  " + icon + display).padEnd(cols - subLen - 2);
@@ -129,31 +151,33 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     w(out);
   }
 
-  function render(): void {
-    drawNavbar([NAV]);
-    drawSearchBar();
-    drawResults();
-    drawBottomBar(buildLeft(), buildRight());
-  }
+  function render(): void { drawNavbar([NAV]); drawSearchBar(); drawResults(); drawBottomBar(buildLeft(), buildRight()); }
   function fullRedraw(): void { clearScreen(); runSearch(); render(); }
   function cleanup(): void { if (searchTimer) clearTimeout(searchTimer); process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
   function scheduleSearch(): void { if (searchTimer) clearTimeout(searchTimer); searchTimer = setTimeout(() => { runSearch(); render(); }, query.length < 2 ? 0 : 120); }
 
   function handleSelect(result: SearchResult): void {
     if (result.kind === "history" || result.kind === "builtin" || result.kind === "alias" || result.kind === "executable") { cleanup(); setTimeout(() => onSelect(result.value), 20); return; }
-    if (result.kind === "dir") { showDirAction(result); return; }
+    if (result.kind === "dir")  { showDirAction(result);  return; }
     if (result.kind === "file") { showFileAction(result); return; }
   }
 
   function showDirAction(result: SearchResult): void {
     const full = result.fullPath;
-    const actionNav: NavItem[] = [{ key: "Ent/C", label: "cd into"}, { key: "Esc", label: "Back" }];
+    const actionNav: NavItem[] = [{ key: "Ent/C", label: "cd into" }, { key: "Esc", label: "Back" }];
     function drawAction(): void {
       const nr = 3; const start = nr + 2; const avail = R() - nr - 2;
       drawNavbar([actionNav]); let out = ""; let ln = 0;
       function line(content: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + content; ln++; }
       line(chalk.blue.bold("▸ " + result.display) + "  " + chalk.dim(result.sub)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-      try { const children = fs.readdirSync(full, { withFileTypes: true }).slice(0, avail - 3); if (!children.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of children) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); const total = fs.readdirSync(full).length; if (total > avail - 3) line(chalk.gray(`  ... and ${total - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
+      try {
+        const children = fs.readdirSync(full, { withFileTypes: true }).slice(0, avail - 3);
+        if (!children.length) { line(chalk.gray("  (empty directory)")); }
+        else {
+          for (const c of children) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name + (c.isDirectory() ? "/" : "")));
+          const total = fs.readdirSync(full).length; if (total > avail - 3) line(chalk.gray(`  ... and ${total - (avail - 3)} more`));
+        }
+      } catch { line(chalk.red("  cannot read directory")); }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
       w(out); drawBottomBar(result.display, "");
     }
@@ -161,7 +185,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onAR); stdin.removeListener("data", onKey);
     function onActionKey(k: string): void {
       if (k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onActionKey); process.stdout.removeListener("resize", onAR); process.stdout.on("resize", onResize); clearScreen(); render(); stdin.on("data", onKey); return; }
-      if (k === "\r" || k === "c" || k === "C") { stdin.removeListener("data", onActionKey); process.stdout.removeListener("resize", onAR); try { process.chdir(full); } catch { } cleanup(); setTimeout(() => onCancel(), 20); }
+      if (k === "\r" || k === "c" || k === "C") { stdin.removeListener("data", onActionKey); process.stdout.removeListener("resize", onAR); try { process.chdir(full); } catch {} cleanup(); setTimeout(() => onCancel(), 20); }
     }
     stdin.on("data", onActionKey); clearScreen(); drawAction();
   }
@@ -170,14 +194,18 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     const full = result.fullPath; const editors = getInstalledEditors();
     if (!editors.length) { cleanup(); setTimeout(() => onCancel(), 20); return; }
     const EW = Math.max(...editors.map(e => e.length)) + 2; let eSelIdx = 0;
-    const fileNav: NavItem[] = [{ key: "Nav", label: "Navigate"}, { key: "Ent", label: "Open"}, { key: "Esc", label: "Back" }];
+    const fileNav: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
     function drawFileAction(): void {
       const nr = 3; const start = nr + 2; const avail = R() - nr - 3;
       drawNavbar([fileNav]); let out = ""; let ln = 0;
       function line(content: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + content; ln++; }
       const hidden = result.display.startsWith(".");
       line((hidden ? chalk.gray : chalk.white)("  " + result.display) + "  " + chalk.dim(result.sub)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-      try { const lines = fs.readFileSync(full, "utf8").split("\n").slice(0, avail - 2); for (const fl of lines) { const d = fl.length > C() - 4 ? fl.slice(0, C() - 5) + "…" : fl; line(chalk.white("  " + d)); } const total = fs.readFileSync(full, "utf8").split("\n").length; if (total > avail - 2) line(chalk.gray(`  ... ${total - (avail - 2)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
+      try {
+        const lines = fs.readFileSync(full, "utf8").split("\n").slice(0, avail - 2);
+        for (const fl of lines) { const d = fl.length > C() - 4 ? fl.slice(0, C() - 5) + "…" : fl; line(chalk.white("  " + d)); }
+        const total = fs.readFileSync(full, "utf8").split("\n").length; if (total > avail - 2) line(chalk.gray(`  ... ${total - (avail - 2)} more lines`));
+      } catch { line(chalk.gray("  (binary file)")); }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
       out += at(start + avail, 1) + clr() + chalk.dim("  open with:");
       let eLine = "  "; for (let i = 0; i < editors.length; i++) { const name = editors[i].padEnd(EW, " "); eLine += i === eSelIdx ? chalk.bgWhite.black.bold(name) : chalk.cyan(name); }
@@ -197,7 +225,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
   function navigate(key: string): boolean {
     const total = rows.length; if (total === 0) return false; let next = selIdx;
-    if (key === "\u001b[A") { next = selIdx - 1; while (next >= 0 && rows[next].kind === "header") next--; if (next < 0) return false; }
+    if      (key === "\u001b[A") { next = selIdx - 1; while (next >= 0 && rows[next].kind === "header") next--; if (next < 0) return false; }
     else if (key === "\u001b[B") { next = selIdx + 1; while (next < total && rows[next].kind === "header") next++; if (next >= total) return false; }
     else { return false; }
     selIdx = next; adjustScroll(); return true;
@@ -211,6 +239,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     if (k === "\x7f" || k === "\u0008") { if (query.length > 0) { query = query.slice(0, -1); scheduleSearch(); render(); } return; }
     if (k.length === 1 && k >= " ") { query += k; scheduleSearch(); render(); return; }
   }
+
   process.stdout.on("resize", onResize); stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
   enterAlt(); fullRedraw();
 }

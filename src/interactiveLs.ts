@@ -85,9 +85,7 @@ function actionColor(kind: ActionKind): (s: string) => string {
 
 function actionLabel(kind: ActionKind, name: string): string {
   if (!kind) return "";
-  const color = actionColor(kind);
-  const kindStr = kind.charAt(0).toUpperCase() + kind.slice(1);
-  return color(`${kindStr}: `) + chalk.white(name);
+  return actionColor(kind)(`${kind.charAt(0).toUpperCase() + kind.slice(1)}: `) + chalk.white(name);
 }
 
 function cellActionStyle(kind: ActionKind, cell: string, isDir: boolean, hidden: boolean): string {
@@ -100,6 +98,10 @@ function cellActionStyle(kind: ActionKind, cell: string, isDir: boolean, hidden:
         ? (hidden ? chalk.cyan(cell) : chalk.blue.bold(cell))
         : (hidden ? chalk.gray(cell) : chalk.white(cell));
   }
+}
+
+function displayName(name: string, isDir: boolean): string {
+  return isDir ? name + "/" : name;
 }
 
 function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => void, onOpenFile: (editor: string, file: string) => void): void {
@@ -133,15 +135,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function isItemActive(name: string): ActionKind {
     const cb = getClipboard() as any;
-    if (moveModePending) {
-      if (moveModePending.srcNames.includes(name)) return "move";
-    }
+    if (moveModePending && moveModePending.srcNames.includes(name)) return "move";
     if (cb) {
-      if (cb.items) {
-        if (cb.items.some((it: any) => it.srcPath === path.join(currentDir, name))) return cb.kind as ActionKind;
-      } else {
-        if (cb.srcPath === path.join(currentDir, name)) return cb.kind as ActionKind;
-      }
+      if (cb.items) { if (cb.items.some((it: any) => it.srcPath === path.join(currentDir, name))) return cb.kind as ActionKind; }
+      else { if (cb.srcPath === path.join(currentDir, name)) return cb.kind as ActionKind; }
     }
     return null;
   }
@@ -172,17 +169,14 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function refreshPreview(): void {
     if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
-    const full = path.join(currentDir, entries[selIdx].name);
-    updatePreview(pvState, full);
+    updatePreview(pvState, path.join(currentDir, entries[selIdx].name));
   }
 
   function togglePreviewPref(): void {
     const mode = getPreviewMode(previewPref);
-    if (mode === "split") {
-      previewPref = C() >= SPLIT_THRESHOLD ? "overlay" : "auto";
-    } else {
-      previewPref = C() >= SPLIT_THRESHOLD ? "split" : "auto";
-    }
+    previewPref = mode === "split"
+      ? (C() >= SPLIT_THRESHOLD ? "overlay" : "auto")
+      : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
   }
 
   function NAV(): NavRows {
@@ -190,39 +184,39 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const mode = getPreviewMode(previewPref);
     if (browseMode) {
       return [[
-        { key: "Nav", label: "Navigate" },
-        { key: "Ent", label: "Open/Enter" },
-        { key: "Tab", label: "Parent" },
-        { key: "Esc", label: "Back to List" },
+        { key: "Nav", label: "Navigate"    },
+        { key: "Ent", label: "Open/Enter"  },
+        { key: "Tab", label: "Parent"      },
+        { key: "Esc", label: "Back to List"},
       ]];
     }
     if (moveModePending) {
       return [[
-        { key: "Nav", label: "Navigate" },
-        { key: "Ent", label: "Enter Dir" },
-        { key: "Tab", label: "Parent" },
+        { key: "Nav", label: "Navigate"                        },
+        { key: "Ent", label: "Enter Dir"                       },
+        { key: "Tab", label: "Parent"                          },
         { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
     return [
       [
-        { key: "Nav", label: "Navigate" },
-        { key: "Spc", label: "Select" },
-        { key: "A",   label: "All" },
-        { key: "Ent", label: "Open/Enter" },
-        { key: "Tab", label: "Parent" },
-        { key: "O",   label: "Browse" },
+        { key: "Nav", label: "Navigate"  },
+        { key: "Spc", label: "Select"    },
+        { key: "A",   label: "All"       },
+        { key: "Ent", label: "Open/Enter"},
+        { key: "Tab", label: "Parent"    },
+        { key: "O",   label: "Browse"    },
         { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
         { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
       [
-        { key: "C", label: "Copy" },
-        { key: "X", label: "Cut" },
-        { key: "V", label: "Paste" },
+        { key: "C", label: "Copy"   },
+        { key: "X", label: "Cut"    },
+        { key: "V", label: "Paste"  },
         { key: "R", label: "Rename" },
-        { key: "M", label: "Move" },
+        { key: "M", label: "Move"   },
         { key: "D", label: "Delete" },
-        { key: "H", label: "History" },
+        { key: "H", label: "History"},
         { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ],
     ];
@@ -230,7 +224,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function enterBrowse(): void {
     if (!pvState.content || pvState.content.kind !== "dir") return;
-    browseMode  = true; browseIdx = 0;
+    browseMode = true; browseIdx = 0;
     browseStack = [{ path: pvState.path, idx: 0, scrollTop: pvState.scrollTop }];
     syncBrowseScroll(); clearScreen(); render();
   }
@@ -243,23 +237,21 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function syncBrowseScroll(): void {
     const metaLines   = getMetaLineCount(pvState.content!);
     const totalOffset = 1 + metaLines;
-    const visH = isSplit()
-      ? Math.max(1, R() - NR() - 3 - 1)
-      : Math.max(1, OVERLAY_LINES - 1);
+    const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
     const targetLine = totalOffset + browseIdx;
     if (targetLine < pvState.scrollTop) pvState.scrollTop = targetLine;
     if (targetLine >= pvState.scrollTop + visH) pvState.scrollTop = targetLine - visH + 1;
   }
 
   function browseNavigate(delta: number): void {
-    const browseEntries = getDirEntries(pvState.content!); if (!browseEntries.length) return;
-    browseIdx = Math.max(0, Math.min(browseEntries.length - 1, browseIdx + delta));
+    const be = getDirEntries(pvState.content!); if (!be.length) return;
+    browseIdx = Math.max(0, Math.min(be.length - 1, browseIdx + delta));
     syncBrowseScroll(); renderPreview(); drawBottom();
   }
 
   function browseEnter(): void {
-    const browseEntries = getDirEntries(pvState.content!); if (!browseEntries.length) return;
-    const entry        = browseEntries[browseIdx];
+    const be = getDirEntries(pvState.content!); if (!be.length) return;
+    const entry = be[browseIdx];
     const resolvedFull = path.join(pvState.path, entry.name);
     if (entry.isDir) {
       browseStack.push({ path: pvState.path, idx: browseIdx, scrollTop: pvState.scrollTop });
@@ -267,14 +259,9 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       browseIdx = 0; syncBrowseScroll(); renderPreview(); drawBottom();
     } else {
       browseMode = false; browseIdx = 0; browseStack = []; pvState.scrollTop = 0;
-      currentDir = path.dirname(resolvedFull);
-      process.chdir(currentDir);
+      currentDir = path.dirname(resolvedFull); process.chdir(currentDir);
       reload(); clearScreen();
-      showEditorPicker(resolvedFull, (ed, f) => {
-        currentDir = path.dirname(f);
-        process.chdir(currentDir);
-        onOpenFile(ed, f);
-      });
+      showEditorPicker(resolvedFull, (ed, f) => { currentDir = path.dirname(f); process.chdir(currentDir); onOpenFile(ed, f); });
     }
   }
 
@@ -292,7 +279,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function cw(): number {
     const lw = effectiveListW();
     if (!entries.length) return 16;
-    return Math.min(Math.max(...entries.map(e => e.name.length)) + 4, Math.floor(lw / 2));
+    return Math.min(Math.max(...entries.map(e => displayName(e.name, e.isDir).length)) + 4, Math.floor(lw / 2));
   }
   function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
@@ -309,21 +296,13 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function drawMiniBar(): void {
-    if (browseMode || moveModePending) {
-      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m");
-      return;
-    }
+    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
     const cols  = C();
-    const nKey  = chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]");
-    const tKey  = chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]");
-    const sKey  = chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]");
-    const nPart = nKey + chalk.dim(" New Folder");
-    const tPart = tKey + chalk.dim(" New File");
-    const sPart = sKey + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
-    const line  = "  " + nPart + "    " + tPart + "    " + sPart;
+    const line  = "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+                  "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
+                  "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
     const vl    = visibleLen(line);
-    const pad   = vl < cols ? " ".repeat(cols - vl) : "";
-    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + pad);
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function navigate(key: string): boolean {
@@ -361,17 +340,15 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (files) s += `  ${files}f`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size)       s += chalk.magenta(`  ${selected.size} sel`);
-    const activeLabel = getActiveActionLabel();
-    if (activeLabel) s += "    " + activeLabel;
+    const al = getActiveActionLabel();
+    if (al) s += "    " + al;
     return s;
   }
 
   function buildRight(): string {
     const mode    = getPreviewMode(previewPref);
-    const modeStr = browseMode
-      ? chalk.cyan(" [browse]")
-      : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
-    const pgHint = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
+    const modeStr = browseMode ? chalk.cyan(" [browse]") : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
+    const pgHint  = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
     if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
     return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
@@ -379,12 +356,11 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function drawMoveConfirmBar(): void {
     if (!moveModePending) return;
-    const cols  = C();
-    const label  = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label);
-    const btnY   = "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here");
-    const btnEsc = "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
-    const line   = label + btnY + btnEsc;
-    const vl     = visibleLen(line);
+    const cols = C();
+    const line = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label) +
+                 "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here") +
+                 "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
+    const vl = visibleLen(line);
     w(at(R() - 1, 1) + "\x1b[2K\x1b[0m");
     w(at(R(), 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
@@ -408,8 +384,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function drawContent(): void {
-    const lw     = effectiveListW();
-    const start  = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
+    const lw    = effectiveListW();
+    const start = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
     let out = "";
     if (!entries.length) {
       out += at(start, 1) + "\x1b[2K" + chalk.dim("  (empty directory)");
@@ -423,13 +399,14 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, isDir } = entries[i];
         const isCursor = i === selIdx; const isSel = selected.has(name);
-        const hidden = name.startsWith(".");
+        const hidden   = name.startsWith(".");
         const itemAction = isItemActive(name);
+        const dispName = displayName(name, isDir);
         const prefix   = isSel ? "✓ " : "  ";
         const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
-        const truncName = name.length > maxNameW ? name.slice(0, maxNameW - 1) + "…" : name;
-        const cell      = (prefix + truncName).padEnd(cWidth, " ").slice(0, cWidth);
+        const truncDisp = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
+        const cell      = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
         if (visCount + cWidth > lw) break;
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
@@ -439,9 +416,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         else                        line += hidden ? chalk.gray(cell) : chalk.white(cell);
         visCount += cWidth;
       }
-      const padNeeded = Math.max(0, lw - visCount);
-      line += " ".repeat(padNeeded);
-      out += at(start + row, 1) + "\x1b[2K" + line;
+      out += at(start + row, 1) + "\x1b[2K" + line + " ".repeat(Math.max(0, lw - visCount));
     }
     w(out);
   }
@@ -488,18 +463,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (!moveModePending) return;
     const { srcPaths, srcNames } = moveModePending;
     let errors = 0;
-    for (let i = 0; i < srcPaths.length; i++) {
-      const err = execMove(srcPaths[i], uniqueDest(currentDir, srcNames[i]));
-      if (err) errors++;
-    }
-    const label = moveModePending.label;
-    moveModePending = null;
+    for (let i = 0; i < srcPaths.length; i++) { const err = execMove(srcPaths[i], uniqueDest(currentDir, srcNames[i])); if (err) errors++; }
+    const label = moveModePending.label; moveModePending = null;
     if (errors > 0) showStatus(`  ${errors} error(s) during move`, true);
-    else {
-      const home = process.env.HOME ?? "";
-      const rel  = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
-      showStatus(`  Moved: ${label}  →  ${rel}`);
-    }
+    else { const home = process.env.HOME ?? ""; showStatus(`  Moved: ${label}  →  ${currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir}`); }
     reload(); fullRedraw();
   }
 
@@ -533,20 +500,19 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const confirmNav: NavItem[] = [{ key: "Y", label: "Move to Trash", color: "yellow" }, { key: "N/Esc", label: "Cancel", color: "green" }];
     function drawConfirm(): void {
       const start = 3; const avail = R() - 3; const cols = C();
-      drawNavbar([confirmNav]);
-      let out = ""; let ln = 0;
+      drawNavbar([confirmNav]); let out = ""; let ln = 0;
       function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
       if (multi) {
         line(chalk.bold(`  Move ${targets.length} items to trash`)); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(t.name));
+        for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(displayName(t.name, t.isDir)));
         if (targets.length > avail - 3) line(chalk.gray(`  ... and ${targets.length - (avail - 3)} more`));
       } else {
         const t = targets[0]; const full = path.join(currentDir, t.name);
-        line(chalk.bold((t.isDir ? "  dir  " : "  file ") + t.name)); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
+        line(chalk.bold((t.isDir ? "  dir  " : "  file ") + displayName(t.name, t.isDir))); line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
         if (t.isDir) {
-          try { const ch = fs.readdirSync(full, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name)); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
+          try { const ch = fs.readdirSync(full, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(displayName(c.name, c.isDirectory()))); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
         } else {
-          try { const fl = fs.readFileSync(full, "utf8").split("\n"); for (const f of fl.slice(0, avail - 3)) { const d = f.length > cols - 4 ? f.slice(0, cols - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
+          try { const fl = fs.readFileSync(full, "utf8").split("\n"); for (const f of fl.slice(0, avail - 3)) { line(chalk.white("  " + (f.length > cols - 4 ? f.slice(0, cols - 5) + "…" : f))); } if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
         }
       }
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
@@ -567,7 +533,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function showEditorPicker(filePath: string, openFileCb?: (editor: string, file: string) => void): void {
-    const cb      = openFileCb ?? onOpenFile;
+    const cb = openFileCb ?? onOpenFile;
     const editors = getInstalledEditors(); if (!editors.length) { showStatus("  no editors found", true); return; }
     if (editors.length === 1) { cb(editors[0], filePath); return; }
     const EW = Math.max(...editors.map(e => e.length)) + 2; let eSel = 0;
@@ -576,8 +542,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       drawNavbar([editorNav]);
       let out = at(3, 1) + "\x1b[2K" + " " + chalk.dim("choose editor:");
       let line = " "; for (let i = 0; i < editors.length; i++) { const name = editors[i].padEnd(EW, " "); line += i === eSel ? chalk.bgWhite.black.bold(name) : chalk.cyan(name); }
-      out += at(4, 1) + "\x1b[2K" + line; w(out);
-      drawBottomBar(path.basename(filePath), "");
+      out += at(4, 1) + "\x1b[2K" + line; w(out); drawBottomBar(path.basename(filePath), "");
     }
     const onER = () => { clearScreen(); drawEditor(); };
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onER); stdin.removeListener("data", onKey);
@@ -601,7 +566,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
         const full = path.join(currentDir, name);
         if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
-        try { fs.mkdirSync(full, { recursive: true }); reload(name); showStatus(`  Created folder: ${name}`); fullRedraw(); }
+        try { fs.mkdirSync(full, { recursive: true }); reload(name); showStatus(`  Created folder: ${name}/`); fullRedraw(); }
         catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
         stdin.on("data", onKey);
       },
@@ -617,11 +582,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
         const full = path.join(currentDir, name);
         if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
-        try {
-          fs.mkdirSync(path.dirname(full), { recursive: true });
-          fs.writeFileSync(full, "", "utf8");
-          reload(name); showStatus(`  Created file: ${name}`); fullRedraw();
-        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
+        try { fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, "", "utf8"); reload(name); showStatus(`  Created file: ${name}`); fullRedraw(); }
+        catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
         stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
@@ -632,10 +594,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     showSortPicker("ls", currentSort, R() - 2,
       (result) => {
-        currentSort = result;
-        process.stdout.on("resize", onResize);
-        const prev = entries[selIdx]?.name;
-        entries = visible(); selIdx = 0;
+        currentSort = result; process.stdout.on("resize", onResize);
+        const prev = entries[selIdx]?.name; entries = visible(); selIdx = 0;
         if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
         adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },
@@ -690,11 +650,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     }
     if (k === "o") {
       if (pvState.content?.kind === "dir") { enterBrowse(); return; }
-      if (pvState.content?.kind === "text" || pvState.content?.kind === "binary") {
-        if (!entries.length) return;
-        const sel = entries[selIdx];
-        showEditorPicker(path.join(currentDir, sel.name));
-      }
+      if ((pvState.content?.kind === "text" || pvState.content?.kind === "binary") && entries.length) showEditorPicker(path.join(currentDir, entries[selIdx].name));
       return;
     }
     if (k === "s") { doSort(); return; }
