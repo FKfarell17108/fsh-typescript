@@ -6,6 +6,8 @@ import { moveToTrash } from "./trash";
 import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog, getMoveMode, setMoveMode, clearMoveMode } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { loadBookmarks, toggleBookmark, isBookmarked } from "./bookmarks";
+import { showBookmarkPicker } from "./bookmarkPicker";
 import {
   LsSort, DEFAULT_LS_SORT, lsSortLabel,
   sortLsEntriesWithStat, showSortPicker,
@@ -60,6 +62,7 @@ export function interactiveLs(onExit: (result: LsResult) => void): void {
     return onExit({ kind: "quit" });
   }
   loadLog();
+  loadBookmarks();
   const stdin = process.stdin;
   function finish(result: LsResult) {
     stdin.removeAllListeners("data");
@@ -297,11 +300,13 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function drawMiniBar(): void {
     if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
-    const cols  = C();
-    const line  = "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
-                  "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
-                  "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
-    const vl    = visibleLen(line);
+    const cols = C();
+    const line =
+      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+      "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
+      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
+      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark");
+    const vl = visibleLen(line);
     w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
@@ -412,6 +417,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
         else if (isSel)             line += chalk.magenta.bold(cell);
         else if (itemAction)        line += cellActionStyle(itemAction, cell, isDir, hidden);
+        else if (isDir && isBookmarked(path.join(currentDir, name))) line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
         else if (isDir)             line += hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
         else                        line += hidden ? chalk.gray(cell) : chalk.white(cell);
         visCount += cWidth;
@@ -608,6 +614,31 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); });
   }
 
+  function doBookmarkToggle(): void {
+    if (!entries.length) return;
+    const entry = entries[selIdx];
+    if (!entry.isDir) { showStatus("  bookmark: only directories can be bookmarked", true); return; }
+    const fullPath = path.join(currentDir, entry.name);
+    const result   = toggleBookmark(fullPath);
+    const msg      = result === "added"
+      ? `  Bookmarked: ${entry.name}/`
+      : `  Removed bookmark: ${entry.name}/`;
+    showStatus(msg);
+    render();
+  }
+
+  function openBookmarks(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showBookmarkPicker(
+      currentDir,
+      (dir) => {
+        try { currentDir = dir; process.chdir(currentDir); } catch {}
+        selected.clear(); reload(); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
@@ -656,6 +687,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "t") { doTouch(); return; }
+    if (k === "b") { doBookmarkToggle(); return; }
+    if (k === "\x02") { openBookmarks(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
     if (k === "\t")  { goParent(); return; }
     if (k === " ")   { toggleSelect(); render(); return; }

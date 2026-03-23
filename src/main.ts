@@ -18,10 +18,13 @@ import { showSearch } from "./search";
 import { showGeneralHistory, loadGeneralHistory, logEvent } from "./generalHistory";
 import { openFileOpsLogFromMain } from "./fileOpsLog";
 import { loadLog } from "./fileOps";
+import { loadBookmarks } from "./bookmarks";
+import { showBookmarkPicker } from "./bookmarkPicker";
 
 loadFshrc();
 loadLog();
 loadGeneralHistory();
+loadBookmarks();
 
 if (isNeofetchEnabled()) printNeofetch();
 
@@ -42,11 +45,11 @@ process.on("SIGINT", () => {
 export function isInputPaused(): boolean { return inputPaused; }
 
 export function getPrompt(): string {
-  const cwd    = process.cwd();
-  const folder = path.basename(cwd) || "/";
+  const cwd     = process.cwd();
+  const folder  = path.basename(cwd) || "/";
   const gitInfo = getGitInfo();
-  const git    = gitInfo ? " " + formatGitPrompt(gitInfo) : "";
-  const arrow  = lastExitCodeForPrompt !== 0 ? chalk.red(" > ") : " > ";
+  const git     = gitInfo ? " " + formatGitPrompt(gitInfo) : "";
+  const arrow   = lastExitCodeForPrompt !== 0 ? chalk.red(" > ") : " > ";
   return `fsh/${chalk.blue(folder)}${git}${arrow}`;
 }
 
@@ -149,6 +152,11 @@ function setupTabIntercept() {
       return;
     }
 
+    if (tabHandlerActive && key.sequence === "\x02") {
+      openBookmarkPicker();
+      return;
+    }
+
     if (tabHandlerActive && key.name === "tab") {
       const line: string = rlAny.line ?? "";
 
@@ -205,6 +213,19 @@ function openGeneralHistory() {
   tabHandlerActive = false;
   pauseInput();
   showGeneralHistory(() => resumeInput());
+}
+
+function openBookmarkPicker() {
+  tabHandlerActive = false;
+  pauseInput();
+  showBookmarkPicker(
+    process.cwd(),
+    (dir) => {
+      try { process.chdir(dir); } catch {}
+      resumeInput();
+    },
+    () => resumeInput()
+  );
 }
 
 function openCommandHistoryPicker() {

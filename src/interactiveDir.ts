@@ -6,6 +6,8 @@ import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt
 import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
 import { showInlineInput } from "./interactiveLs";
+import { loadBookmarks, toggleBookmark, isBookmarked } from "./bookmarks";
+import { showBookmarkPicker } from "./bookmarkPicker";
 import {
   LsSort, DEFAULT_LS_SORT, lsSortLabel,
   sortDirEntriesWithStat, showSortPicker,
@@ -47,7 +49,7 @@ function cellActionStyle(kind: ActionKind, cell: string, hidden: boolean): strin
 }
 
 export function interactiveDir(onExit: () => void): void {
-  let cwd = process.cwd(); loadLog();
+  let cwd = process.cwd(); loadLog(); loadBookmarks();
 
   function loadDirs(dir: string): { name: string; hidden: boolean }[] {
     try {
@@ -268,11 +270,13 @@ export function interactiveDir(onExit: () => void): void {
 
   function drawMiniBar(): void {
     if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
-    const cols  = C();
-    const line  = "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
-                  "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
-                  "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort));
-    const vl    = visibleLen(line);
+    const cols = C();
+    const line =
+      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+      "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
+      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
+      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark");
+    const vl = visibleLen(line);
     w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
@@ -372,6 +376,7 @@ export function interactiveDir(onExit: () => void): void {
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
         else if (isSel)             line += chalk.magenta.bold(cell);
         else if (itemAction)        line += cellActionStyle(itemAction, cell, hidden);
+        else if (isBookmarked(path.join(cwd, name))) line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
         else if (hidden)            line += chalk.cyan(cell);
         else                        line += chalk.blue.bold(cell);
         visCount += cWidth;
@@ -542,6 +547,30 @@ export function interactiveDir(onExit: () => void): void {
     showFileOpsLog(() => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); });
   }
 
+  function doBookmarkToggle(): void {
+    if (!entries.length) return;
+    const entry    = entries[selIdx];
+    const fullPath = path.join(cwd, entry.name);
+    const result   = toggleBookmark(fullPath);
+    const msg      = result === "added"
+      ? `  Bookmarked: ${entry.name}/`
+      : `  Removed bookmark: ${entry.name}/`;
+    showStatus(msg);
+    render();
+  }
+
+  function openBookmarks(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showBookmarkPicker(
+      cwd,
+      (dir) => {
+        try { cwd = dir; process.chdir(cwd); } catch {}
+        reloadEntries(cwd); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
+      },
+      () => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }
+    );
+  }
+
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
@@ -582,6 +611,8 @@ export function interactiveDir(onExit: () => void): void {
     if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "t") { doTouch(); return; }
+    if (k === "b") { doBookmarkToggle(); return; }
+    if (k === "\x02") { openBookmarks(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
     if (k === "\r") { if (entries.length) goInto(entries[selIdx].name); return; }
     if (k === "\t") { goUp(); return; }
