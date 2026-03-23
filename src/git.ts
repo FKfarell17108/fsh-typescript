@@ -12,6 +12,10 @@ export type GitInfo = {
   untracked: boolean;
 };
 
+export type GitFileStatus = "modified" | "staged" | "untracked" | "added" | "deleted" | "renamed" | "conflict";
+
+export type GitFileStatuses = Map<string, GitFileStatus>;
+
 function findGitRoot(dir: string): string | null {
   let current = dir;
   while (true) {
@@ -74,13 +78,119 @@ export function getGitInfo(): GitInfo | null {
   return { branch, dirty, staged, untracked, ahead, behind };
 }
 
+export type GitDirStatus =
+  | { kind: "repo"; repoName: string; branch: string }
+  | { kind: "none" };
+
+export function getGitDirStatus(dir: string): GitDirStatus {
+  const root = findGitRoot(dir);
+  if (!root) return { kind: "none" };
+
+  const repoName = path.basename(root);
+
+  let branch = "HEAD";
+  const head = readFile(path.join(root, ".git", "HEAD"));
+  if (head) {
+    if (head.startsWith("ref: refs/heads/")) {
+      branch = head.slice("ref: refs/heads/".length);
+    } else {
+      branch = head.slice(0, 7);
+    }
+  }
+
+  return { kind: "repo", repoName, branch };
+}
+
+export function getGitFileStatuses(dir: string): GitFileStatuses {
+  const statuses: GitFileStatuses = new Map();
+  const root = findGitRoot(dir);
+  if (!root) return statuses;
+
+  try {
+    const out = execFileSync(
+      "git",
+      ["status", "--porcelain", "-u"],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }
+    );
+
+    for (const line of out.split("\n")) {
+      if (line.length < 4) continue;
+      const x    = line[0];
+      const y    = line[1];
+      const file = line.slice(3).trim();
+
+      const absPath = path.join(root, file.includes(" -> ") ? file.split(" -> ")[1] : file);
+      const rel     = path.relative(dir, absPath);
+
+      if (rel.startsWith("..")) continue;
+
+      const topLevel = rel.split(path.sep)[0];
+
+      let status: GitFileStatus;
+      if (x === "?" && y === "?") {
+        status = "untracked";
+      } else if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) {
+        status = "conflict";
+      } else if (x === "R") {
+        status = "renamed";
+      } else if (x !== " " && x !== "." && y === " ") {
+        status = "staged";
+      } else if (x === "A" && y !== " ") {
+        status = "added";
+      } else if ((x === "D") || (y === "D")) {
+        status = "deleted";
+      } else if (y !== " " && y !== ".") {
+        status = "modified";
+      } else {
+        status = "staged";
+      }
+
+      if (!statuses.has(topLevel)) {
+        statuses.set(topLevel, status);
+      } else {
+        const existing = statuses.get(topLevel)!;
+        if (status === "conflict") statuses.set(topLevel, "conflict");
+        else if (status === "staged" && existing !== "conflict") statuses.set(topLevel, "staged");
+      }
+    }
+  } catch {
+    return statuses;
+  }
+
+  return statuses;
+}
+
+export function gitStatusColor(status: GitFileStatus): (s: string) => string {
+  switch (status) {
+    case "modified":  return chalk.hex("#FFD580");
+    case "staged":    return chalk.hex("#AEDD87");
+    case "added":     return chalk.hex("#AEDD87");
+    case "untracked": return chalk.hex("#FF9E64");
+    case "deleted":   return chalk.hex("#FF7B8A");
+    case "renamed":   return chalk.hex("#70D4FF");
+    case "conflict":  return chalk.hex("#FF5370");
+  }
+}
+
+export function gitStatusBadge(status: GitFileStatus): string {
+  switch (status) {
+    case "modified":  return chalk.hex("#FFD580")("~");
+    case "staged":    return chalk.hex("#AEDD87")("+");
+    case "added":     return chalk.hex("#AEDD87")("+");
+    case "untracked": return chalk.hex("#FF9E64")("?");
+    case "deleted":   return chalk.hex("#FF7B8A")("-");
+    case "renamed":   return chalk.hex("#70D4FF")("→");
+    case "conflict":  return chalk.hex("#FF5370")("!");
+  }
+}
+
 export function formatGitPrompt(info: GitInfo): string {
   let s = chalk.gray("(") + chalk.magenta(info.branch);
 
   const indicators: string[] = [];
-  if (info.staged)    indicators.push(chalk.green("●")); 
+  if (info.staged)    indicators.push(chalk.green("●"));
   if (info.dirty)     indicators.push(chalk.yellow("✚"));
-  if (info.untracked) indicators.push(chalk.red("…"));  
+  if (info.untracked) indicators.push(chalk.red("…"));
 
   if (indicators.length > 0) s += " " + indicators.join("");
 

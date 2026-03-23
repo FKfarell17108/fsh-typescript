@@ -20,6 +20,7 @@ import {
   getDirEntries, getMetaLineCount,
   SPLIT_THRESHOLD, OVERLAY_LINES,
 } from "./preview";
+import { getGitFileStatuses, getGitDirStatus, GitFileStatuses, gitStatusBadge, gitStatusColor } from "./git";
 
 const EDITOR_CANDIDATES = ["nvim", "vim", "vi", "nano", "emacs", "micro", "hx", "helix", "code", "gedit"];
 
@@ -107,18 +108,38 @@ function displayName(name: string, isDir: boolean): string {
   return isDir ? name + "/" : name;
 }
 
+function fuzzyMatch(query: string, target: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  if (t.includes(q)) return true;
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
 function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => void, onOpenFile: (editor: string, file: string) => void): void {
-  let currentDir = startDir;
-  let showHidden = false;
-  let selIdx = 0; let scrollTop = 0;
-  let selected = new Set<string>();
-  let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentDir  = startDir;
+  let showHidden  = false;
+  let selIdx      = 0;
+  let scrollTop   = 0;
+  let selected    = new Set<string>();
+  let statusMsg   = "";
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
   let allEntries: { name: string; isDir: boolean }[] = [];
   let entries:    { name: string; isDir: boolean }[] = [];
 
-  let previewPref: PreviewPref  = "auto";
-  const pvState: PreviewState   = makePreviewState();
-  let currentSort: LsSort       = { ...DEFAULT_LS_SORT };
+  let searchActive = false;
+  let searchQuery  = "";
+
+  let gitStatuses: GitFileStatuses = new Map();
+  let gitStatusDir = "";
+
+  let previewPref: PreviewPref = "auto";
+  const pvState: PreviewState  = makePreviewState();
+  let currentSort: LsSort      = { ...DEFAULT_LS_SORT };
 
   let browseMode  = false;
   let browseIdx   = 0;
@@ -128,6 +149,13 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
   function effectiveListW(): number { return isSplit() ? listCols() : C(); }
+
+  function refreshGitStatuses(): void {
+    if (gitStatusDir === currentDir) return;
+    gitStatusDir = currentDir;
+    try { gitStatuses = getGitFileStatuses(currentDir); }
+    catch { gitStatuses = new Map(); }
+  }
 
   function getActiveActionLabel(): string {
     const cb = getClipboard() as any;
@@ -156,14 +184,51 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     } catch { allEntries = []; }
   }
 
-  function visible() {
-    const base = showHidden ? allEntries : allEntries.filter(e => !e.name.startsWith("."));
+  let searchResults: { name: string; isDir: boolean; relPath: string }[] = [];
+
+  function scanRecursive(dir: string, depth: number): { name: string; isDir: boolean; relPath: string }[] {
+    if (depth > 4) return [];
+    const SKIP = new Set(["node_modules", ".git", ".svn", "dist", "build", "out", ".next", "__pycache__", ".cache"]);
+    const results: { name: string; isDir: boolean; relPath: string }[] = [];
+    try {
+      const ents = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of ents) {
+        if (e.name.startsWith(".")) continue;
+        const full   = path.join(dir, e.name);
+        const isDir  = e.isDirectory() || (e.isSymbolicLink() && (() => { try { return fs.statSync(full).isDirectory(); } catch { return false; } })());
+        const relPath = path.relative(currentDir, full);
+        if (relPath.startsWith("..")) continue;
+        results.push({ name: e.name, isDir, relPath });
+        if (isDir && !SKIP.has(e.name)) {
+          results.push(...scanRecursive(full, depth + 1));
+        }
+      }
+    } catch {}
+    return results;
+  }
+
+  function runSearch(query: string): { name: string; isDir: boolean }[] {
+    if (!query) return [];
+    const all = scanRecursive(currentDir, 0);
+    return all
+      .filter(e => fuzzyMatch(query, e.name))
+      .slice(0, 200)
+      .map(e => ({ name: e.relPath, isDir: e.isDir }));
+  }
+
+  function visible(): { name: string; isDir: boolean }[] {
+    const base   = showHidden ? allEntries : allEntries.filter(e => !e.name.startsWith("."));
     return sortLsEntriesWithStat(base, currentSort, currentDir);
   }
 
   function reload(keepName?: string): void {
-    loadAll(); entries = visible();
-    if (!entries.length && allEntries.length) { showHidden = true; entries = visible(); }
+    loadAll();
+    if (searchQuery) {
+      entries = runSearch(searchQuery);
+    } else {
+      entries = visible();
+      if (!entries.length && allEntries.length) { showHidden = true; entries = visible(); }
+    }
     selected = new Set(Array.from(selected).filter(n => entries.some(e => e.name === n)));
     selIdx = 0; scrollTop = 0;
     if (keepName) { const idx = entries.findIndex(e => e.name === keepName); if (idx >= 0) selIdx = idx; }
@@ -182,6 +247,11 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
   }
 
+  function NR(): number {
+    if (browseMode || moveModePending) return 2;
+    return 3;
+  }
+
   function NAV(): NavRows {
     const cb   = getClipboard() as any;
     const mode = getPreviewMode(previewPref);
@@ -195,9 +265,9 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     }
     if (moveModePending) {
       return [[
-        { key: "Nav", label: "Navigate"                        },
-        { key: "Ent", label: "Enter Dir"                       },
-        { key: "Tab", label: "Parent"                          },
+        { key: "Nav", label: "Navigate"                                 },
+        { key: "Ent", label: "Enter Dir"                                },
+        { key: "Tab", label: "Parent"                                   },
         { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
@@ -277,12 +347,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     syncBrowseScroll(); renderPreview(); drawBottom();
   }
 
-  function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
-
   function cw(): number {
     const lw = effectiveListW();
     if (!entries.length) return 16;
-    return Math.min(Math.max(...entries.map(e => displayName(e.name, e.isDir).length)) + 4, Math.floor(lw / 2));
+    return Math.min(Math.max(...entries.map(e => displayName(e.name, e.isDir).length)) + 6, Math.floor(lw / 2));
   }
   function pr(): number { return Math.max(1, Math.floor(effectiveListW() / cw())); }
   function tr(): number { return Math.ceil(entries.length / pr()); }
@@ -296,18 +364,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const row = Math.floor(selIdx / pr()); const v = vis();
     if (row < scrollTop)      scrollTop = row;
     if (row >= scrollTop + v) scrollTop = row - v + 1;
-  }
-
-  function drawMiniBar(): void {
-    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
-    const cols = C();
-    const line =
-      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
-      "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
-      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
-      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark");
-    const vl = visibleLen(line);
-    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function navigate(key: string): boolean {
@@ -332,7 +388,20 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function goParent(): void {
     const parent = path.dirname(currentDir); if (parent === currentDir) return;
     const prev = path.basename(currentDir); currentDir = parent; process.chdir(currentDir);
-    selected.clear(); reload(prev); fullRedraw();
+    selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
+    reload(prev); fullRedraw();
+  }
+
+  function buildGitStatus(): string {
+    const targetDir = (() => {
+      if (entries.length && entries[selIdx]?.isDir) {
+        return path.join(currentDir, entries[selIdx].name);
+      }
+      return currentDir;
+    })();
+    const gs = getGitDirStatus(targetDir);
+    if (gs.kind === "none") return chalk.red("no git");
+    return chalk.hex("#AEDD87")(`git: ${gs.repoName}`) + chalk.dim(` (${gs.branch})`);
   }
 
   function buildLeft(): string {
@@ -345,8 +414,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (files) s += `  ${files}f`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size)       s += chalk.magenta(`  ${selected.size} sel`);
+    if (searchQuery)         s += chalk.cyan(`  /${searchQuery}`);
     const al = getActiveActionLabel();
     if (al) s += "    " + al;
+    s += "    " + buildGitStatus();
     return s;
   }
 
@@ -357,6 +428,30 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
     return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
+  }
+
+  function drawMiniBar(): void {
+    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
+    const cols = C();
+
+    if (searchActive) {
+      const line = "  " + chalk.bgBlack.cyan.bold(" search ") + " " + chalk.white(searchQuery) + chalk.dim("█") + "    " + chalk.dim("Esc") + chalk.dim(" clear  ") + chalk.dim("Enter") + chalk.dim(" confirm");
+      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + " ".repeat(Math.max(0, cols - visibleLen(line))));
+      return;
+    }
+
+    const searchHint = searchQuery
+      ? chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + " " + chalk.cyan.bold(searchQuery)
+      : chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + chalk.dim(" Search");
+
+    const line =
+      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+      "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
+      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
+      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark") +
+      "    " + searchHint;
+    const vl = visibleLen(line);
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function drawMoveConfirmBar(): void {
@@ -375,7 +470,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (moveModePending) { drawMoveConfirmBar(); return; }
     drawMiniBar();
     const cols = C();
-    const ls   = buildLeft()  ? "  " + buildLeft()  : "";
+    const ls   = "  " + buildLeft();
     const rs   = buildRight() ? buildRight() + "  " : "";
     const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
     w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
@@ -393,7 +488,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const start = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
     let out = "";
     if (!entries.length) {
-      out += at(start, 1) + "\x1b[2K" + chalk.dim("  (empty directory)");
+      const msg = searchQuery
+        ? chalk.dim(`  no results for "`) + chalk.white(searchQuery) + chalk.dim('"')
+        : chalk.dim("  (empty directory)");
+      out += at(start, 1) + "\x1b[2K" + msg;
       for (let row = 1; row < v; row++) out += at(start + row, 1) + "\x1b[2K";
       w(out); return;
     }
@@ -403,23 +501,33 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       for (let col = 0; col < p; col++) {
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, isDir } = entries[i];
-        const isCursor = i === selIdx; const isSel = selected.has(name);
-        const hidden   = name.startsWith(".");
+        const isCursor   = i === selIdx;
+        const isSel      = selected.has(name);
+        const hidden     = name.startsWith(".");
         const itemAction = isItemActive(name);
-        const dispName = displayName(name, isDir);
-        const prefix   = isSel ? "✓ " : "  ";
-        const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
+        const gitStatus  = gitStatuses.get(name);
+        const dispName   = searchQuery ? entries[i].name : displayName(name, isDir);
+        const badge      = gitStatus ? gitStatusBadge(gitStatus) + " " : "  ";
+        const prefix     = isSel ? "✓ " : badge;
+        const maxNameW   = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
-        const truncDisp = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
-        const cell      = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
+        const truncDisp  = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
+        const cell       = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
         if (visCount + cWidth > lw) break;
+
         if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
         else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
         else if (isSel)             line += chalk.magenta.bold(cell);
         else if (itemAction)        line += cellActionStyle(itemAction, cell, isDir, hidden);
-        else if (isDir && isBookmarked(path.join(currentDir, name))) line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
-        else if (isDir)             line += hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
-        else                        line += hidden ? chalk.gray(cell) : chalk.white(cell);
+        else if (isDir && isBookmarked(path.join(currentDir, name))) {
+          line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
+        } else if (gitStatus) {
+          line += gitStatusColor(gitStatus)(cell);
+        } else if (isDir) {
+          line += hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
+        } else {
+          line += hidden ? chalk.gray(cell) : chalk.white(cell);
+        }
         visCount += cWidth;
       }
       out += at(start + row, 1) + "\x1b[2K" + line + " ".repeat(Math.max(0, lw - visCount));
@@ -454,7 +562,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (cb.kind === "cut") clearClipboard(); selected.clear();
     if (errors > 0) showStatus(`  ${errors} error(s) during paste`, true);
     else showStatus(`  ${cb.kind === "copy" ? "Copied" : "Moved"}: ${items.length} item${items.length > 1 ? "s" : ""}`);
-    reload(); render();
+    gitStatusDir = ""; reload(); render();
   }
 
   function doMoveInit(): void {
@@ -473,7 +581,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const label = moveModePending.label; moveModePending = null;
     if (errors > 0) showStatus(`  ${errors} error(s) during move`, true);
     else { const home = process.env.HOME ?? ""; showStatus(`  Moved: ${label}  →  ${currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir}`); }
-    reload(); fullRedraw();
+    gitStatusDir = ""; reload(); fullRedraw();
   }
 
   function doRename(): void {
@@ -488,7 +596,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (fs.existsSync(path.join(currentDir, newName))) { showStatus(`  '${newName}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
         const err = execRename(full, newName);
         if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}  →  ${newName}`);
-        selected.clear(); reload(newName); fullRedraw(); stdin.on("data", onKey);
+        selected.clear(); gitStatusDir = ""; reload(newName); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
@@ -499,6 +607,42 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     selIdx = 0; scrollTop = 0;
     if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
     adjustScroll(); refreshPreview(); render();
+  }
+
+  function openSearch(): void {
+    searchActive = true;
+    drawMiniBar();
+  }
+
+  function handleSearchKey(key: string): void {
+    if (key === "\u001b" || key === "\u0003") {
+      searchActive = false;
+      if (searchQuery) { searchQuery = ""; reload(); }
+      fullRedraw();
+      return;
+    }
+    if (key === "\r") {
+      searchActive = false;
+      fullRedraw();
+      return;
+    }
+    if (key === "\x7f" || key === "\u0008") {
+      if (searchQuery.length > 0) {
+        searchQuery = searchQuery.slice(0, -1);
+        entries = searchQuery ? runSearch(searchQuery) : visible();
+        selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
+        drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+      }
+      return;
+    }
+    if (navigate(key)) { drawContent(); renderPreview(); drawBottom(); return; }
+    if (key.length === 1 && key >= " ") {
+      searchQuery += key;
+      entries = runSearch(searchQuery);
+      selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
+      drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+      return;
+    }
   }
 
   function showDeleteConfirm(): void {
@@ -531,7 +675,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); process.stdout.on("resize", onResize);
         let errors = 0; for (const t of targets) { try { moveToTrash(path.join(currentDir, t.name)); } catch { errors++; } }
         selected.clear(); if (errors) showStatus(`  ${errors} error(s)`, true);
-        reload(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); stdin.on("data", onKey); fullRedraw(); return;
+        gitStatusDir = ""; reload(); selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); stdin.on("data", onKey); fullRedraw(); return;
       }
       if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }
     }
@@ -620,10 +764,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (!entry.isDir) { showStatus("  bookmark: only directories can be bookmarked", true); return; }
     const fullPath = path.join(currentDir, entry.name);
     const result   = toggleBookmark(fullPath);
-    const msg      = result === "added"
-      ? `  Bookmarked: ${entry.name}/`
-      : `  Removed bookmark: ${entry.name}/`;
-    showStatus(msg);
+    showStatus(result === "added" ? `  Bookmarked: ${entry.name}/` : `  Removed bookmark: ${entry.name}/`);
     render();
   }
 
@@ -633,7 +774,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       currentDir,
       (dir) => {
         try { currentDir = dir; process.chdir(currentDir); } catch {}
-        selected.clear(); reload(); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
+        selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
+        reload(); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }
     );
@@ -642,6 +784,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
+    if (searchActive) { handleSearchKey(k); return; }
+
     if (browseMode) {
       if (k === "\u0003") { exitBrowse(); onQuit(); return; }
       if (k === "\u001b" || k === "q") { exitBrowse(); return; }
@@ -659,7 +803,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       if (k === "y" || k === "Y" || k === "\r") {
         if (k === "\r" && entries.length && entries[selIdx].isDir) {
           const target = path.join(currentDir, entries[selIdx].name);
-          try { fs.readdirSync(target); currentDir = target; process.chdir(currentDir); reload(); fullRedraw(); } catch { showStatus("  cannot open directory", true); }
+          try { fs.readdirSync(target); currentDir = target; process.chdir(currentDir); gitStatusDir = ""; reload(); fullRedraw(); } catch { showStatus("  cannot open directory", true); }
           return;
         }
         doMoveConfirm(); return;
@@ -674,11 +818,12 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "\u0003") { onQuit(); return; }
     if (k === "h") { openLog(); return; }
     if (k === "\u001b") {
-      if (getClipboard()) { clearClipboard(); render(); }
-      else if (selected.size > 0) { selected.clear(); render(); }
-      else onQuit();
-      return;
+      if (searchQuery) { searchQuery = ""; searchActive = false; reload(); fullRedraw(); return; }
+      if (getClipboard()) { clearClipboard(); render(); return; }
+      if (selected.size > 0) { selected.clear(); render(); return; }
+      onQuit(); return;
     }
+    if (k === "/") { openSearch(); return; }
     if (k === "o") {
       if (pvState.content?.kind === "dir") { enterBrowse(); return; }
       if ((pvState.content?.kind === "text" || pvState.content?.kind === "binary") && entries.length) showEditorPicker(path.join(currentDir, entries[selIdx].name));
@@ -703,18 +848,28 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
     if (k === "\u001b[6~") { scrollPreview(pvState,  5, vis()); renderPreview(); drawBottom(); return; }
     if (k === "\r") {
-      if (!entries.length) return; const sel = entries[selIdx];
+      if (!entries.length) return;
+      const sel = entries[selIdx];
+      const fullPath = searchQuery
+        ? path.join(currentDir, sel.name)
+        : path.join(currentDir, sel.name);
       if (sel.isDir) {
-        try { fs.readdirSync(path.join(currentDir, sel.name)); currentDir = path.join(currentDir, sel.name); process.chdir(currentDir); selected.clear(); reload(); fullRedraw(); }
-        catch { showStatus("  cannot open directory", true); }
+        try {
+          fs.readdirSync(fullPath);
+          currentDir = fullPath;
+          process.chdir(currentDir);
+          selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
+          reload(); fullRedraw();
+        } catch { showStatus("  cannot open directory", true); }
         return;
       }
-      showEditorPicker(path.join(currentDir, sel.name)); return;
+      showEditorPicker(fullPath); return;
     }
     if (navigate(k)) render();
   }
 
   process.stdout.on("resize", onResize);
   if (stdin.isTTY) stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
+  refreshGitStatuses();
   reload(); clearScreen(); render();
 }

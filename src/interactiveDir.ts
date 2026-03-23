@@ -20,6 +20,7 @@ import {
   getDirEntries, getMetaLineCount,
   SPLIT_THRESHOLD, OVERLAY_LINES,
 } from "./preview";
+import { getGitDirStatus } from "./git";
 
 type ActionKind = "copy" | "cut" | "move" | "rename" | "paste" | null;
 
@@ -48,6 +49,18 @@ function cellActionStyle(kind: ActionKind, cell: string, hidden: boolean): strin
   }
 }
 
+function fuzzyMatch(query: string, target: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  if (t.includes(q)) return true;
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
 export function interactiveDir(onExit: () => void): void {
   let cwd = process.cwd(); loadLog(); loadBookmarks();
 
@@ -62,6 +75,9 @@ export function interactiveDir(onExit: () => void): void {
   let allEntries = loadDirs(cwd);
   let showHidden = false;
   let currentSort: LsSort = { ...DEFAULT_LS_SORT };
+
+  let searchActive = false;
+  let searchQuery  = "";
 
   const visibleEntries = () => {
     const base = showHidden ? allEntries : allEntries.filter(e => !e.hidden);
@@ -92,6 +108,68 @@ export function interactiveDir(onExit: () => void): void {
   function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
   function effectiveListW(): number { return isSplit() ? listCols() : C(); }
 
+  function scanRecursive(dir: string, depth: number): { name: string; hidden: boolean; relPath: string }[] {
+    if (depth > 4) return [];
+    const SKIP = new Set(["node_modules", ".git", ".svn", "dist", "build", "out", ".next", "__pycache__", ".cache"]);
+    const results: { name: string; hidden: boolean; relPath: string }[] = [];
+    try {
+      const ents = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of ents) {
+        if (e.name.startsWith(".")) continue;
+        const full = path.join(dir, e.name);
+        let isDir = false;
+        try { isDir = e.isDirectory() || (e.isSymbolicLink() && fs.statSync(full).isDirectory()); } catch {}
+        if (!isDir) continue;
+        const relPath = path.relative(cwd, full);
+        if (relPath.startsWith("..")) continue;
+        results.push({ name: e.name, hidden: e.name.startsWith("."), relPath });
+        if (!SKIP.has(e.name)) results.push(...scanRecursive(full, depth + 1));
+      }
+    } catch {}
+    return results;
+  }
+
+  function runSearch(query: string): { name: string; hidden: boolean }[] {
+    if (!query) return [];
+    const all = scanRecursive(cwd, 0);
+    return all
+      .filter(e => fuzzyMatch(query, e.name))
+      .slice(0, 200)
+      .map(e => ({ name: e.relPath, hidden: e.hidden }));
+  }
+
+  function getActiveEntries(): { name: string; hidden: boolean }[] {
+    if (searchQuery) return runSearch(searchQuery);
+    return visibleEntries();
+  }
+
+  function reloadEntries(newCwd?: string, restoreName?: string): void {
+    if (newCwd) cwd = newCwd;
+    allEntries = loadDirs(cwd);
+    if (searchQuery) {
+      entries = runSearch(searchQuery);
+    } else {
+      entries = visibleEntries();
+      if (!entries.length && allEntries.length) { showHidden = true; entries = visibleEntries(); }
+    }
+    selIdx = 0; scrollTop = 0;
+    if (restoreName) { const idx = entries.findIndex(e => e.name === restoreName); if (idx >= 0) selIdx = idx; }
+    adjustScroll(); refreshPreview();
+  }
+
+  function refreshPreview(): void {
+    if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
+    const fullPath = path.join(cwd, entries[selIdx].name);
+    updatePreview(pvState, fullPath);
+  }
+
+  function togglePreviewPref(): void {
+    const mode = getPreviewMode(previewPref);
+    previewPref = mode === "split"
+      ? (C() >= SPLIT_THRESHOLD ? "overlay" : "auto")
+      : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
+  }
+
   function getActiveActionLabel(): string {
     const cb = getClipboard() as any;
     if (moveModePending) return actionLabel("move", moveModePending.label);
@@ -109,17 +187,7 @@ export function interactiveDir(onExit: () => void): void {
     return null;
   }
 
-  function refreshPreview(): void {
-    if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
-    updatePreview(pvState, path.join(cwd, entries[selIdx].name));
-  }
-
-  function togglePreviewPref(): void {
-    const mode = getPreviewMode(previewPref);
-    previewPref = mode === "split"
-      ? (C() >= SPLIT_THRESHOLD ? "overlay" : "auto")
-      : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
-  }
+  function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
 
   function NAV(): NavRows {
     const cb   = getClipboard() as any;
@@ -185,43 +253,6 @@ export function interactiveDir(onExit: () => void): void {
     if (targetLine >= pvState.scrollTop + visH) pvState.scrollTop = targetLine - visH + 1;
   }
 
-  function doMkdir(): void {
-    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "New folder:", "",
-      (name) => {
-        process.stdout.on("resize", onResize);
-        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
-        const full = path.join(cwd, name);
-        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
-        try {
-          fs.mkdirSync(full, { recursive: true });
-          allEntries = loadDirs(cwd); entries = visibleEntries();
-          const idx = entries.findIndex(e => e.name === name);
-          selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
-          adjustScroll(); refreshPreview(); showStatus(`  Created folder: ${name}/`); fullRedraw();
-        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
-        stdin.on("data", onKey);
-      },
-      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
-    );
-  }
-
-  function doTouch(): void {
-    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "New file:", "",
-      (name) => {
-        process.stdout.on("resize", onResize);
-        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
-        const full = path.join(cwd, name);
-        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
-        try { fs.writeFileSync(full, "", "utf8"); showStatus(`  Created file: ${name}`); }
-        catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); stdin.on("data", onKey); return; }
-        allEntries = loadDirs(cwd); entries = visibleEntries(); adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
-      },
-      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
-    );
-  }
-
   function browseNavigate(delta: number): void {
     const be = getDirEntries(pvState.content!); if (!be.length) return;
     browseIdx = Math.max(0, Math.min(be.length - 1, browseIdx + delta));
@@ -248,8 +279,6 @@ export function interactiveDir(onExit: () => void): void {
     syncBrowseScroll(); renderPreview(); drawBottom();
   }
 
-  function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
-
   function cw(): number {
     const lw = effectiveListW();
     if (!entries.length) return 16;
@@ -266,18 +295,6 @@ export function interactiveDir(onExit: () => void): void {
     const row = Math.floor(selIdx / pr()); const v = vis();
     if (row < scrollTop)      scrollTop = row;
     if (row >= scrollTop + v) scrollTop = row - v + 1;
-  }
-
-  function drawMiniBar(): void {
-    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
-    const cols = C();
-    const line =
-      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
-      "    " + chalk.white("[") + chalk.cyan.bold("T") + chalk.white("]") + chalk.dim(" New File") +
-      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
-      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark");
-    const vl = visibleLen(line);
-    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function navigate(key: string): boolean {
@@ -299,14 +316,29 @@ export function interactiveDir(onExit: () => void): void {
   function selectAll(): void { if (selected.size === entries.length) selected.clear(); else selected = new Set(entries.map(e => e.name)); }
   function getTargets() { if (selected.size > 0) return entries.filter(e => selected.has(e.name)); return entries.length ? [entries[selIdx]] : []; }
 
+  function buildGitStatus(): string {
+    const targetDir = (() => {
+      if (entries.length) {
+        const full = path.join(cwd, entries[selIdx].name);
+        return full;
+      }
+      return cwd;
+    })();
+    const gs = getGitDirStatus(targetDir);
+    if (gs.kind === "none") return chalk.red("no git");
+    return chalk.hex("#AEDD87")(`git: ${gs.repoName}`) + chalk.dim(` (${gs.branch})`);
+  }
+
   function buildLeft(): string {
     const home = process.env.HOME ?? ""; const rel = cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
     const hidC = allEntries.filter(e => e.hidden).length;
     let s = rel; s += `  ${entries.length}d`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
+    if (searchQuery)   s += chalk.cyan(`  /${searchQuery}`);
     const al = getActiveActionLabel();
     if (al) s += "    " + al;
+    s += "    " + buildGitStatus();
     return s;
   }
 
@@ -317,6 +349,29 @@ export function interactiveDir(onExit: () => void): void {
     if (tr() <= vis()) return modeStr + pgHint;
     const more = tr() - (scrollTop + vis());
     return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
+  }
+
+  function drawMiniBar(): void {
+    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
+    const cols = C();
+
+    if (searchActive) {
+      const line = "  " + chalk.bgBlack.cyan.bold(" search ") + " " + chalk.white(searchQuery) + chalk.dim("█") + "    " + chalk.dim("Esc") + chalk.dim(" clear  ") + chalk.dim("Enter") + chalk.dim(" confirm");
+      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + " ".repeat(Math.max(0, cols - visibleLen(line))));
+      return;
+    }
+
+    const searchHint = searchQuery
+      ? chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + " " + chalk.cyan.bold(searchQuery)
+      : chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + chalk.dim(" Search");
+
+    const line =
+      "  " + chalk.white("[") + chalk.cyan.bold("N") + chalk.white("]") + chalk.dim(" New Folder") +
+      "    " + chalk.white("[") + chalk.cyan.bold("S") + chalk.white("]") + chalk.dim(" Sort: ") + chalk.cyan(lsSortLabel(currentSort)) +
+      "    " + chalk.white("[") + chalk.cyan.bold("B") + chalk.white("]") + chalk.dim(" Bookmark") +
+      "    " + searchHint;
+    const vl = visibleLen(line);
+    w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function drawMoveConfirmBar(): void {
@@ -335,7 +390,7 @@ export function interactiveDir(onExit: () => void): void {
     if (moveModePending) { drawMoveConfirmBar(); return; }
     drawMiniBar();
     const cols = C();
-    const ls   = buildLeft()  ? "  " + buildLeft()  : "";
+    const ls   = "  " + buildLeft();
     const rs   = buildRight() ? buildRight() + "  " : "";
     const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
     w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
@@ -353,7 +408,10 @@ export function interactiveDir(onExit: () => void): void {
     const start = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
     let out = "";
     if (!entries.length) {
-      out += at(start, 1) + "\x1b[2K" + chalk.dim("  (no subdirectories)");
+      const msg = searchQuery
+        ? chalk.dim(`  no results for "`) + chalk.white(searchQuery) + chalk.dim('"')
+        : chalk.dim("  (no subdirectories)");
+      out += at(start, 1) + "\x1b[2K" + msg;
       for (let row = 1; row < v; row++) out += at(start + row, 1) + "\x1b[2K";
       w(out); return;
     }
@@ -415,8 +473,7 @@ export function interactiveDir(onExit: () => void): void {
     if (cb.kind === "cut") clearClipboard(); selected.clear();
     if (errors > 0) showStatus(`  ${errors} error(s) during paste`, true);
     else showStatus(`  ${cb.kind === "copy" ? "Copied" : "Moved"}: ${items.length} item${items.length > 1 ? "s" : ""}`);
-    allEntries = loadDirs(cwd); entries = visibleEntries();
-    selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); refreshPreview(); render();
+    reloadEntries(); render();
   }
 
   function doMoveInit(): void {
@@ -435,8 +492,7 @@ export function interactiveDir(onExit: () => void): void {
     const label = moveModePending.label; moveModePending = null;
     if (errors > 0) showStatus(`  ${errors} error(s) during move`, true);
     else { const home = process.env.HOME ?? ""; showStatus(`  Moved: ${label}  →  ${cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd}`); }
-    allEntries = loadDirs(cwd); entries = visibleEntries();
-    selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); adjustScroll(); refreshPreview(); fullRedraw();
+    reloadEntries(); fullRedraw();
   }
 
   function doRename(): void {
@@ -451,41 +507,91 @@ export function interactiveDir(onExit: () => void): void {
         if (fs.existsSync(path.join(cwd, newName))) { showStatus(`  '${newName}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
         const err = execRename(full, newName);
         if (err) showStatus("  Error: " + err, true); else showStatus(`  Renamed: ${e.name}/  →  ${newName}/`);
-        selected.clear(); allEntries = loadDirs(cwd); entries = visibleEntries();
-        const idx = entries.findIndex(e2 => e2.name === newName);
-        selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
-        adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
+        selected.clear(); reloadEntries(undefined, newName); fullRedraw(); stdin.on("data", onKey);
       },
       () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
     );
   }
 
-  function reloadEntries(newCwd: string, restoreName?: string): void {
-    cwd = newCwd; allEntries = loadDirs(cwd); entries = visibleEntries();
-    if (!entries.length && allEntries.length) { showHidden = true; entries = visibleEntries(); }
-    selIdx = 0; scrollTop = 0;
-    if (restoreName) { const idx = entries.findIndex(e => e.name === restoreName); if (idx >= 0) selIdx = idx; }
-    adjustScroll(); refreshPreview();
+  function doMkdir(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showInlineInput(stdin, "New folder:", "",
+      (name) => {
+        process.stdout.on("resize", onResize);
+        if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
+        const full = path.join(cwd, name);
+        if (fs.existsSync(full)) { showStatus(`  '${name}' already exists`, true); fullRedraw(); stdin.on("data", onKey); return; }
+        try {
+          fs.mkdirSync(full, { recursive: true });
+          allEntries = loadDirs(cwd); entries = searchQuery ? runSearch(searchQuery) : visibleEntries();
+          const idx = entries.findIndex(e => e.name === name);
+          selIdx = idx >= 0 ? idx : Math.min(selIdx, Math.max(0, entries.length - 1));
+          adjustScroll(); refreshPreview(); showStatus(`  Created folder: ${name}/`); fullRedraw();
+        } catch (e: any) { showStatus("  Error: " + e.message, true); fullRedraw(); }
+        stdin.on("data", onKey);
+      },
+      () => { process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey); }
+    );
   }
 
   function goUp(): void {
     const parent = path.dirname(cwd); if (parent === cwd) return;
-    const prev = path.basename(cwd); reloadEntries(parent, prev);
+    const prev = path.basename(cwd);
+    searchQuery = ""; searchActive = false;
+    reloadEntries(parent, prev);
     if (!entries.length) { process.chdir(cwd); return exit(); }
     render();
   }
 
   function goInto(name: string): void {
-    const target = path.join(cwd, name); reloadEntries(target);
-    if (!entries.length) { process.chdir(target); return exit(); }
+    searchQuery = ""; searchActive = false;
+    reloadEntries(path.join(cwd, name));
+    if (!entries.length) { process.chdir(cwd); return exit(); }
     render();
   }
 
   function toggleHidden(): void {
-    const prev = entries[selIdx]?.name; showHidden = !showHidden; entries = visibleEntries();
+    const prev = entries[selIdx]?.name; showHidden = !showHidden;
+    entries = searchQuery ? runSearch(searchQuery) : visibleEntries();
     selIdx = 0; scrollTop = 0;
     if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
     adjustScroll(); refreshPreview(); render();
+  }
+
+  function openSearch(): void {
+    searchActive = true;
+    drawMiniBar();
+  }
+
+  function handleSearchKey(key: string): void {
+    if (key === "\u001b" || key === "\u0003") {
+      searchActive = false;
+      if (searchQuery) { searchQuery = ""; reloadEntries(); }
+      fullRedraw();
+      return;
+    }
+    if (key === "\r") {
+      searchActive = false;
+      fullRedraw();
+      return;
+    }
+    if (key === "\x7f" || key === "\u0008") {
+      if (searchQuery.length > 0) {
+        searchQuery = searchQuery.slice(0, -1);
+        entries = searchQuery ? runSearch(searchQuery) : visibleEntries();
+        selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
+        drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+      }
+      return;
+    }
+    if (navigate(key)) { drawContent(); renderPreview(); drawBottom(); return; }
+    if (key.length === 1 && key >= " ") {
+      searchQuery += key;
+      entries = runSearch(searchQuery);
+      selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
+      drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+      return;
+    }
   }
 
   function showDeleteConfirm(): void {
@@ -519,7 +625,7 @@ export function interactiveDir(onExit: () => void): void {
         stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR); process.stdout.on("resize", onResize);
         let errors = 0;
         for (const t of targets) { try { moveToTrash(path.join(cwd, t.name)); allEntries = allEntries.filter(e => e.name !== t.name); } catch { errors++; } }
-        entries = visibleEntries(); selected.clear();
+        entries = searchQuery ? runSearch(searchQuery) : visibleEntries(); selected.clear();
         if (!entries.length && !allEntries.length) { process.chdir(cwd); return exit(); }
         if (errors) showStatus(`  ${errors} error(s)`, true);
         selIdx = Math.min(selIdx, Math.max(0, entries.length - 1)); refreshPreview(); stdin.on("data", onKey); fullRedraw(); return;
@@ -534,7 +640,8 @@ export function interactiveDir(onExit: () => void): void {
     showSortPicker("dir", currentSort, R() - 2,
       (result) => {
         currentSort = result; process.stdout.on("resize", onResize);
-        const prev = entries[selIdx]?.name; allEntries = loadDirs(cwd); entries = visibleEntries(); selIdx = 0;
+        const prev = entries[selIdx]?.name; allEntries = loadDirs(cwd);
+        entries = searchQuery ? runSearch(searchQuery) : visibleEntries(); selIdx = 0;
         if (prev) { const idx = entries.findIndex(e => e.name === prev); if (idx >= 0) selIdx = idx; }
         adjustScroll(); refreshPreview(); fullRedraw(); stdin.on("data", onKey);
       },
@@ -552,10 +659,7 @@ export function interactiveDir(onExit: () => void): void {
     const entry    = entries[selIdx];
     const fullPath = path.join(cwd, entry.name);
     const result   = toggleBookmark(fullPath);
-    const msg      = result === "added"
-      ? `  Bookmarked: ${entry.name}/`
-      : `  Removed bookmark: ${entry.name}/`;
-    showStatus(msg);
+    showStatus(result === "added" ? `  Bookmarked: ${entry.name}/` : `  Removed bookmark: ${entry.name}/`);
     render();
   }
 
@@ -565,6 +669,7 @@ export function interactiveDir(onExit: () => void): void {
       cwd,
       (dir) => {
         try { cwd = dir; process.chdir(cwd); } catch {}
+        searchQuery = ""; searchActive = false;
         reloadEntries(cwd); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
       },
       () => { enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey); }
@@ -574,6 +679,8 @@ export function interactiveDir(onExit: () => void): void {
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
+    if (searchActive) { handleSearchKey(k); return; }
+
     if (browseMode) {
       if (k === "\u0003") { exitBrowse(); process.chdir(cwd); exit(); return; }
       if (k === "\u001b" || k === "q") { exitBrowse(); return; }
@@ -601,16 +708,16 @@ export function interactiveDir(onExit: () => void): void {
     }
     if (k === "\u0003") { process.chdir(cwd); return exit(); }
     if (k === "\u001b") {
-      if (getClipboard()) { clearClipboard(); render(); }
-      else if (selected.size > 0) { selected.clear(); render(); }
-      else { process.chdir(cwd); exit(); }
-      return;
+      if (searchQuery) { searchQuery = ""; searchActive = false; reloadEntries(); fullRedraw(); return; }
+      if (getClipboard()) { clearClipboard(); render(); return; }
+      if (selected.size > 0) { selected.clear(); render(); return; }
+      process.chdir(cwd); exit(); return;
     }
     if (k === "h") { openLog(); return; }
+    if (k === "/") { openSearch(); return; }
     if (k === "o") { if (pvState.content?.kind === "dir") { enterBrowse(); } return; }
     if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
-    if (k === "t") { doTouch(); return; }
     if (k === "b") { doBookmarkToggle(); return; }
     if (k === "\x02") { openBookmarks(); return; }
     if (k === "p") { togglePreviewPref(); fullRedraw(); return; }
