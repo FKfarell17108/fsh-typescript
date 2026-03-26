@@ -19,6 +19,7 @@ import {
   drawSplitPreview, drawOverlayPreview,
   getDirEntries, getMetaLineCount,
   SPLIT_THRESHOLD, OVERLAY_LINES,
+  openImageWithFeh,
 } from "./preview";
 import { getGitFileStatuses, getGitDirStatus, GitFileStatuses, gitStatusBadge, gitStatusColor } from "./git";
 
@@ -157,6 +158,14 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     catch { gitStatuses = new Map(); }
   }
 
+  function cursorIsDir(): boolean {
+    return entries.length > 0 && entries[selIdx]?.isDir === true;
+  }
+
+  function cursorIsImage(): boolean {
+    return pvState.content?.kind === "image";
+  }
+
   function getActiveActionLabel(): string {
     const cb = getClipboard() as any;
     if (moveModePending) return actionLabel("move", moveModePending.label);
@@ -183,8 +192,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       });
     } catch { allEntries = []; }
   }
-
-  let searchResults: { name: string; isDir: boolean; relPath: string }[] = [];
 
   function scanRecursive(dir: string, depth: number): { name: string; isDir: boolean; relPath: string }[] {
     if (depth > 4) return [];
@@ -271,14 +278,16 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
+    const entLabel = cursorIsDir() ? "Enter" : "Open";
+    const oLabel   = cursorIsDir() ? "Browse" : "Preview";
     return [
       [
         { key: "Nav", label: "Navigate"  },
         { key: "Spc", label: "Select"    },
         { key: "A",   label: "All"       },
-        { key: "Ent", label: "Open/Enter"},
+        { key: "Ent", label: entLabel    },
         { key: "Tab", label: "Parent"    },
-        { key: "O",   label: "Browse"    },
+        { key: "O",   label: oLabel      },
         { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
         { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
@@ -825,8 +834,9 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     }
     if (k === "/") { openSearch(); return; }
     if (k === "o") {
-      if (pvState.content?.kind === "dir") { enterBrowse(); return; }
-      if ((pvState.content?.kind === "text" || pvState.content?.kind === "binary") && entries.length) showEditorPicker(path.join(currentDir, entries[selIdx].name));
+      if (cursorIsDir()) { enterBrowse(); return; }
+      if (cursorIsImage()) { openImageWithFeh(pvState.path); return; }
+      if (entries.length) showEditorPicker(path.join(currentDir, entries[selIdx].name));
       return;
     }
     if (k === "s") { doSort(); return; }
@@ -850,9 +860,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "\r") {
       if (!entries.length) return;
       const sel = entries[selIdx];
-      const fullPath = searchQuery
-        ? path.join(currentDir, sel.name)
-        : path.join(currentDir, sel.name);
+      const fullPath = path.join(currentDir, sel.name);
       if (sel.isDir) {
         try {
           fs.readdirSync(fullPath);
@@ -861,6 +869,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
           selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
           reload(); fullRedraw();
         } catch { showStatus("  cannot open directory", true); }
+        return;
+      }
+      if (pvState.content?.kind === "image") {
+        openImageWithFeh(fullPath);
         return;
       }
       showEditorPicker(fullPath); return;

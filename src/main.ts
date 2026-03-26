@@ -20,6 +20,7 @@ import { openFileOpsLogFromMain } from "./fileOpsLog";
 import { loadLog } from "./fileOps";
 import { loadBookmarks } from "./bookmarks";
 import { showBookmarkPicker } from "./bookmarkPicker";
+import { closeImagePreview } from "./preview";
 
 loadFshrc();
 loadLog();
@@ -27,6 +28,10 @@ loadGeneralHistory();
 loadBookmarks();
 
 if (isNeofetchEnabled()) printNeofetch();
+
+// Cleanup on exit
+process.on("exit", () => { closeImagePreview(); });
+process.on("SIGINT", () => { closeImagePreview(); process.exit(130); });
 
 let rl: readline.Interface;
 let historyEntries: HistoryEntry[] = loadHistoryEntries();

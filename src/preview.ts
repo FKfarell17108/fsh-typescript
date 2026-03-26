@@ -1,7 +1,108 @@
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
-import { w, at, C, R, visibleLen } from "./tui";
+import { w, at, C, R, visibleLen, NAVBAR_ROWS } from "./tui";
+import { spawn } from "child_process";
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "tiff", "tif"]);
+
+let _fehPid: number | null = null;
+
+function killFeh(): void {
+  if (_fehPid) {
+    try {
+      process.kill(_fehPid, "SIGTERM");
+    } catch {}
+    _fehPid = null;
+  }
+}
+
+function showImageWithFeh(fullPath: string, width: number, height: number): void {
+  killFeh();
+  try {
+    // Get screen dimensions (approximate)
+    const screenW = 1920;
+    const screenH = 1080;
+
+    // Calculate scaled dimensions to fit screen while maintaining aspect ratio
+    const maxW = Math.floor(screenW * 0.6);
+    const maxH = Math.floor(screenH * 0.8);
+
+    let scale = 1;
+    if (width > maxW) scale = Math.min(scale, maxW / width);
+    if (height > maxH) scale = Math.min(scale, maxH / height);
+
+    const imgW = Math.floor(width * scale);
+    const imgH = Math.floor(height * scale);
+
+    // Center the window
+    const xOffset = Math.floor((screenW - imgW) / 2);
+    const yOffset = Math.floor((screenH - imgH) / 2);
+
+    const child = spawn("feh", [
+      "--borderless",
+      "--hide-pointer",
+      "--geometry", `${imgW}x${imgH}+${xOffset}+${yOffset}`,
+      "--name", "fsh-preview",
+      "--scale-down",
+      "--no-menus",
+      "--no-embed",
+      "--auto-zoom",
+      fullPath,
+    ], {
+      detached: true,
+      stdio: "ignore",
+    });
+    _fehPid = child.pid!;
+  } catch {}
+}
+
+export function closeImagePreview(): void {
+  killFeh();
+}
+
+export function openImageWithFeh(fullPath: string): void {
+  // Read image to get dimensions
+  try {
+    const buf = fs.readFileSync(fullPath);
+    const ext = path.extname(fullPath).slice(1).toLowerCase();
+    if (!IMAGE_EXTS.has(ext)) return;
+
+    // Parse dimensions based on format
+    let width = 0, height = 0;
+
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      width = buf.readUInt32BE(16);
+      height = buf.readUInt32BE(20);
+    } else if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+      let i = 3;
+      while (i < buf.length - 1) {
+        if (buf[i] === 0xff && buf[i+1] >= 0xc0 && buf[i+1] <= 0xc3) {
+          height = buf.readUInt16BE(i + 5);
+          width = buf.readUInt16BE(i + 7);
+          break;
+        }
+        if (buf[i] !== 0xff) { i++; continue; }
+        const len = buf.readUInt16BE(i + 2);
+        if (len < 2) break;
+        i += 2 + len;
+      }
+    } else if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+      width = buf.readUInt16LE(6);
+      height = buf.readUInt16LE(8);
+    } else if (buf[0] === 0x42 && buf[1] === 0x4d) {
+      width = buf.readUInt32LE(18);
+      height = Math.abs(buf.readInt32LE(22));
+    }
+
+    if (width > 0 && height > 0) {
+      showImageWithFeh(fullPath, width, height);
+    } else {
+      // Fallback without dimension info
+      showImageWithFeh(fullPath, 800, 600);
+    }
+  } catch {}
+}
 
 export const SPLIT_THRESHOLD = 110;
 export const PREVIEW_RATIO   = 0.4;
@@ -25,6 +126,7 @@ export type PreviewContent =
   | { kind: "text";   lines: string[]; totalLines: number; meta: FileMeta }
   | { kind: "binary"; meta: FileMeta }
   | { kind: "dir";    entries: DirEntry[]; total: number; meta: DirMeta }
+  | { kind: "image";  fullPath: string; meta: FileMeta; width: number; height: number }
   | { kind: "empty" };
 
 export type FileMeta = { size: string; modified: string; perms: string; ext: string; };
@@ -55,6 +157,63 @@ function isBinary(buf: Buffer): boolean {
   }
   return false;
 }
+
+function isImageExt(ext: string): boolean {
+  return IMAGE_EXTS.has(ext.toLowerCase());
+}
+
+function getImageDimensions(buf: Buffer): { width: number; height: number } | null {
+  if (buf.length < 24) return null;
+
+  // PNG: bytes 16-23 contain width and height
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    if (width > 0 && height > 0 && width < 10000 && height < 10000) {
+      return { width, height };
+    }
+  }
+
+  // JPEG: scan for SOF marker
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    let i = 3;
+    while (i < buf.length - 1) {
+      if (buf[i] === 0xff && buf[i+1] >= 0xc0 && buf[i+1] <= 0xc3) {
+        const height = buf.readUInt16BE(i + 5);
+        const width = buf.readUInt16BE(i + 7);
+        if (width > 0 && height > 0 && width < 10000 && height < 10000) {
+          return { width, height };
+        }
+      }
+      if (buf[i] !== 0xff) { i++; continue; }
+      const len = buf.readUInt16BE(i + 2);
+      if (len < 2) break;
+      i += 2 + len;
+    }
+  }
+
+  // GIF: width and height at bytes 6-9
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    const width = buf.readUInt16LE(6);
+    const height = buf.readUInt16LE(8);
+    if (width > 0 && height > 0 && width < 10000 && height < 10000) {
+      return { width, height };
+    }
+  }
+
+  // BMP: width and height at bytes 18-25
+  if (buf[0] === 0x42 && buf[1] === 0x4d) {
+    const width = buf.readInt32LE(18);
+    const height = buf.readInt32LE(22);
+    if (width > 0 && Math.abs(height) > 0 && width < 10000 && Math.abs(height) < 10000) {
+      return { width, height: Math.abs(height) };
+    }
+  }
+
+  return null;
+}
+
+
 
 function dirSize(dirPath: string, depth = 0): number {
   if (depth > 3) return 0;
@@ -93,9 +252,15 @@ export function buildPreview(fullPath: string): PreviewContent {
   };
 
   if (stat.size === 0)             return { kind:"text", lines:[""], totalLines:0, meta };
-  if (stat.size > 2*1024*1024)     return { kind:"binary", meta };
+  if (stat.size > 10*1024*1024)    return { kind:"binary", meta };
   let buf: Buffer;
   try { buf = fs.readFileSync(fullPath); } catch { return { kind:"binary", meta }; }
+  if (isImageExt(meta.ext)) {
+    const dims = getImageDimensions(buf);
+    if (dims) {
+      return { kind: "image", fullPath, meta, width: dims.width, height: dims.height };
+    }
+  }
   if (isBinary(buf))               return { kind:"binary", meta };
   const lines = buf.toString("utf8").split("\n");
   return { kind:"text", lines, totalLines: lines.length, meta };
@@ -170,12 +335,29 @@ export function makePreviewState(): PreviewState {
 
 export function updatePreview(state: PreviewState, fullPath: string): void {
   if (state.path === fullPath) return;
+
+  // Close feh if we're moving away from an image
+  const wasImage = state.content?.kind === "image";
+  const isImage = IMAGE_EXTS.has(path.extname(fullPath).slice(1).toLowerCase());
+
+  if (wasImage && !isImage) {
+    killFeh();
+  }
+
   state.path    = fullPath;
   state.content = buildPreview(fullPath);
   state.scrollTop = 0;
 }
 
 export function forceUpdatePreview(state: PreviewState, fullPath: string): void {
+  // Close feh if we're moving away from an image
+  const wasImage = state.content?.kind === "image";
+  const isImage = IMAGE_EXTS.has(path.extname(fullPath).slice(1).toLowerCase());
+
+  if (wasImage && !isImage) {
+    killFeh();
+  }
+
   state.path    = fullPath;
   state.content = buildPreview(fullPath);
   state.scrollTop = 0;
@@ -191,6 +373,7 @@ function totalPreviewLines(content: PreviewContent): number {
   if (content.kind === "text")   return content.lines.length + 7;
   if (content.kind === "binary") return 8;
   if (content.kind === "dir")    return content.entries.length + 8;
+  if (content.kind === "image")  return 12;
   return 1;
 }
 
@@ -202,6 +385,14 @@ export function renderPreviewLines(state: PreviewState, width: number): string[]
 function renderContent(content: PreviewContent, width: number): string[] {
   if (content.kind === "empty")  return [padLine(chalk.dim("  (nothing here)"), width)];
   if (content.kind === "binary") return [padLine(chalk.dim("  binary file"), width), ...renderMeta(content.meta, width)];
+
+  if (content.kind === "image") {
+    const lines: string[] = [];
+    lines.push(chalk.blue.bold("  image  "));
+    lines.push(...renderMeta(content.meta, width));
+    lines.push(chalk.dim(`  ${content.width}×${content.height}`));
+    return lines;
+  }
 
   if (content.kind === "dir") {
     const lines: string[] = [];
@@ -239,8 +430,6 @@ export function renderBrowseLines(
   content:  PreviewContent,
   browseIdx: number,
   width:    number,
-  scrollTop: number,
-  visH:     number,
 ): string[] {
   if (content.kind !== "dir") return renderContent(content, width);
   const metaLines = renderDirMeta(content.meta, width);
@@ -283,11 +472,12 @@ export function drawSplitPreview(
     out += at(startR + i, divCol) + chalk.dim("│") + padLine(line, pvW);
   }
   w(out);
+
 }
 
 export function drawOverlayPreview(
   state:     PreviewState,
-  navRows:   number,
+  _navRows:  number,
   browseIdx?: number,
 ): void {
   const cols   = C();
@@ -342,3 +532,4 @@ export function getMetaLineCount(content: PreviewContent): number {
   if (content.kind === "dir") return 8;
   return 0;
 }
+

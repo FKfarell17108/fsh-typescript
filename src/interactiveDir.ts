@@ -208,14 +208,15 @@ export function interactiveDir(onExit: () => void): void {
         { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
+    const oLabel = pvState.content?.kind === "dir" ? "Browse" : "Preview";
     return [
       [
         { key: "Nav", label: "Navigate"  },
         { key: "Spc", label: "Select"    },
         { key: "A",   label: "All"       },
-        { key: "Ent", label: "Enter Dir" },
+        { key: "Ent", label: "Enter"     },
         { key: "Tab", label: "Parent"    },
-        { key: "O",   label: "Browse"    },
+        { key: "O",   label: oLabel      },
         { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
         { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
@@ -715,7 +716,10 @@ export function interactiveDir(onExit: () => void): void {
     }
     if (k === "h") { openLog(); return; }
     if (k === "/") { openSearch(); return; }
-    if (k === "o") { if (pvState.content?.kind === "dir") { enterBrowse(); } return; }
+    if (k === "o") {
+      if (pvState.content?.kind === "dir") { enterBrowse(); }
+      return;
+    }
     if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "b") { doBookmarkToggle(); return; }
