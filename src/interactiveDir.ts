@@ -19,8 +19,11 @@ import {
   drawSplitPreview, drawOverlayPreview,
   getDirEntries, getMetaLineCount,
   SPLIT_THRESHOLD, OVERLAY_LINES,
+  openImageWithFeh, closeImagePreview,
 } from "./preview";
 import { getGitDirStatus } from "./git";
+
+const IMAGE_EXTS = new Set(["png","jpg","jpeg","gif","bmp","webp","ico","tiff","tif"]);
 
 type ActionKind = "copy" | "cut" | "move" | "rename" | "paste" | null;
 
@@ -102,6 +105,7 @@ export function interactiveDir(onExit: () => void): void {
   let browseMode  = false;
   let browseIdx   = 0;
   let browseStack: { path: string; idx: number; scrollTop: number }[] = [];
+  let fehOpen     = false;
 
   let moveModePending: { srcPaths: string[]; srcNames: string[]; label: string } | null = null;
 
@@ -193,11 +197,18 @@ export function interactiveDir(onExit: () => void): void {
     const cb   = getClipboard() as any;
     const mode = getPreviewMode(previewPref);
     if (browseMode) {
+      const be = getDirEntries(pvState.content ?? { kind: "empty" } as any);
+      const curBrowseEntry = be[browseIdx];
+      const entLabelBrowse = !curBrowseEntry
+        ? "Open/Enter"
+        : curBrowseEntry.isDir
+          ? "Enter"
+          : "Open";
       return [[
         { key: "Nav", label: "Navigate"    },
-        { key: "Ent", label: "Open/Enter"  },
+        { key: "Ent", label: entLabelBrowse },
         { key: "Tab", label: "Parent"      },
-        { key: "Esc", label: "Back to List"},
+        { key: "Esc", label: fehOpen ? "Close Preview" : "Back to List" },
       ]];
     }
     if (moveModePending) {
@@ -241,6 +252,7 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function exitBrowse(): void {
+    if (fehOpen) { closeImagePreview(); fehOpen = false; }
     browseMode = false; browseIdx = 0; browseStack = []; pvState.scrollTop = 0;
     clearScreen(); render();
   }
@@ -258,6 +270,7 @@ export function interactiveDir(onExit: () => void): void {
     const be = getDirEntries(pvState.content!); if (!be.length) return;
     browseIdx = Math.max(0, Math.min(be.length - 1, browseIdx + delta));
     syncBrowseScroll(); renderPreview(); drawBottom();
+    drawNavbar(NAV());
   }
 
   function browseEnter(): void {
@@ -268,6 +281,16 @@ export function interactiveDir(onExit: () => void): void {
       browseStack.push({ path: pvState.path, idx: browseIdx, scrollTop: pvState.scrollTop });
       forceUpdatePreview(pvState, resolvedFull);
       browseIdx = 0; syncBrowseScroll(); renderPreview(); drawBottom();
+      drawNavbar(NAV());
+    } else {
+      const ext = path.extname(resolvedFull).slice(1).toLowerCase();
+      if (IMAGE_EXTS.has(ext)) {
+        openImageWithFeh(resolvedFull);
+        fehOpen = true;
+        drawNavbar(NAV());
+        drawBottom();
+        return;
+      }
     }
   }
 
@@ -278,6 +301,7 @@ export function interactiveDir(onExit: () => void): void {
     forceUpdatePreview(pvState, parentFrame.path);
     browseIdx = prev.idx; pvState.scrollTop = prev.scrollTop;
     syncBrowseScroll(); renderPreview(); drawBottom();
+    drawNavbar(NAV());
   }
 
   function cw(): number {
@@ -684,7 +708,17 @@ export function interactiveDir(onExit: () => void): void {
 
     if (browseMode) {
       if (k === "\u0003") { exitBrowse(); process.chdir(cwd); exit(); return; }
-      if (k === "\u001b" || k === "q") { exitBrowse(); return; }
+      if (k === "\u001b" || k === "q") {
+        if (fehOpen) {
+          closeImagePreview();
+          fehOpen = false;
+          drawNavbar(NAV());
+          drawBottom();
+          return;
+        }
+        exitBrowse();
+        return;
+      }
       if (k === "\u001b[A") { browseNavigate(-1); return; }
       if (k === "\u001b[B") { browseNavigate(1);  return; }
       if (k === "\u001b[5~") { browseNavigate(-5); return; }

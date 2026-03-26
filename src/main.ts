@@ -29,7 +29,6 @@ loadBookmarks();
 
 if (isNeofetchEnabled()) printNeofetch();
 
-// Cleanup on exit
 process.on("exit", () => { closeImagePreview(); });
 process.on("SIGINT", () => { closeImagePreview(); process.exit(130); });
 

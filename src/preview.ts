@@ -20,11 +20,9 @@ function killFeh(): void {
 function showImageWithFeh(fullPath: string, width: number, height: number): void {
   killFeh();
   try {
-    // Get screen dimensions (approximate)
     const screenW = 1920;
     const screenH = 1080;
 
-    // Calculate scaled dimensions to fit screen while maintaining aspect ratio
     const maxW = Math.floor(screenW * 0.6);
     const maxH = Math.floor(screenH * 0.8);
 
@@ -35,7 +33,6 @@ function showImageWithFeh(fullPath: string, width: number, height: number): void
     const imgW = Math.floor(width * scale);
     const imgH = Math.floor(height * scale);
 
-    // Center the window
     const xOffset = Math.floor((screenW - imgW) / 2);
     const yOffset = Math.floor((screenH - imgH) / 2);
 
@@ -62,13 +59,11 @@ export function closeImagePreview(): void {
 }
 
 export function openImageWithFeh(fullPath: string): void {
-  // Read image to get dimensions
   try {
     const buf = fs.readFileSync(fullPath);
     const ext = path.extname(fullPath).slice(1).toLowerCase();
     if (!IMAGE_EXTS.has(ext)) return;
 
-    // Parse dimensions based on format
     let width = 0, height = 0;
 
     if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
@@ -98,7 +93,6 @@ export function openImageWithFeh(fullPath: string): void {
     if (width > 0 && height > 0) {
       showImageWithFeh(fullPath, width, height);
     } else {
-      // Fallback without dimension info
       showImageWithFeh(fullPath, 800, 600);
     }
   } catch {}
@@ -165,7 +159,6 @@ function isImageExt(ext: string): boolean {
 function getImageDimensions(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 24) return null;
 
-  // PNG: bytes 16-23 contain width and height
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
     const width = buf.readUInt32BE(16);
     const height = buf.readUInt32BE(20);
@@ -174,7 +167,6 @@ function getImageDimensions(buf: Buffer): { width: number; height: number } | nu
     }
   }
 
-  // JPEG: scan for SOF marker
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
     let i = 3;
     while (i < buf.length - 1) {
@@ -192,7 +184,6 @@ function getImageDimensions(buf: Buffer): { width: number; height: number } | nu
     }
   }
 
-  // GIF: width and height at bytes 6-9
   if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
     const width = buf.readUInt16LE(6);
     const height = buf.readUInt16LE(8);
@@ -201,7 +192,6 @@ function getImageDimensions(buf: Buffer): { width: number; height: number } | nu
     }
   }
 
-  // BMP: width and height at bytes 18-25
   if (buf[0] === 0x42 && buf[1] === 0x4d) {
     const width = buf.readInt32LE(18);
     const height = buf.readInt32LE(22);
@@ -336,7 +326,6 @@ export function makePreviewState(): PreviewState {
 export function updatePreview(state: PreviewState, fullPath: string): void {
   if (state.path === fullPath) return;
 
-  // Close feh if we're moving away from an image
   const wasImage = state.content?.kind === "image";
   const isImage = IMAGE_EXTS.has(path.extname(fullPath).slice(1).toLowerCase());
 
@@ -350,7 +339,6 @@ export function updatePreview(state: PreviewState, fullPath: string): void {
 }
 
 export function forceUpdatePreview(state: PreviewState, fullPath: string): void {
-  // Close feh if we're moving away from an image
   const wasImage = state.content?.kind === "image";
   const isImage = IMAGE_EXTS.has(path.extname(fullPath).slice(1).toLowerCase());
 
