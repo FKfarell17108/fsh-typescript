@@ -23,18 +23,18 @@ import {
 } from "./preview";
 import { getGitDirStatus } from "./git";
 
-const IMAGE_EXTS = new Set(["png","jpg","jpeg","gif","bmp","webp","ico","tiff","tif"]);
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "tiff", "tif"]);
 
 type ActionKind = "copy" | "cut" | "move" | "rename" | "paste" | null;
 
 function actionColor(kind: ActionKind): (s: string) => string {
   switch (kind) {
-    case "copy":   return chalk.hex("#56D4D4");
-    case "cut":    return chalk.hex("#FFD580");
-    case "move":   return chalk.hex("#FFA878");
+    case "copy": return chalk.hex("#56D4D4");
+    case "cut": return chalk.hex("#FFD580");
+    case "move": return chalk.hex("#FFA878");
     case "rename": return chalk.hex("#D4A9F5");
-    case "paste":  return chalk.hex("#AEDD87");
-    default:       return chalk.white;
+    case "paste": return chalk.hex("#AEDD87");
+    default: return chalk.white;
   }
 }
 
@@ -45,10 +45,10 @@ function actionLabel(kind: ActionKind, name: string): string {
 
 function cellActionStyle(kind: ActionKind, cell: string, hidden: boolean): string {
   switch (kind) {
-    case "copy":  return chalk.hex("#56D4D4").underline(cell);
-    case "cut":   return chalk.hex("#FFD580").underline(cell);
-    case "move":  return chalk.hex("#FFA878").bold(cell);
-    default:      return hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
+    case "copy": return chalk.hex("#56D4D4").underline(cell);
+    case "cut": return chalk.hex("#FFD580").underline(cell);
+    case "move": return chalk.hex("#FFA878").bold(cell);
+    default: return hidden ? chalk.cyan(cell) : chalk.blue.bold(cell);
   }
 }
 
@@ -80,7 +80,7 @@ export function interactiveDir(onExit: () => void): void {
   let currentSort: LsSort = { ...DEFAULT_LS_SORT };
 
   let searchActive = false;
-  let searchQuery  = "";
+  let searchQuery = "";
 
   const visibleEntries = () => {
     const base = showHidden ? allEntries : allEntries.filter(e => !e.hidden);
@@ -100,12 +100,12 @@ export function interactiveDir(onExit: () => void): void {
   let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
   let previewPref: PreviewPref = "auto";
-  const pvState: PreviewState  = makePreviewState();
+  const pvState: PreviewState = makePreviewState();
 
-  let browseMode  = false;
-  let browseIdx   = 0;
+  let browseMode = false;
+  let browseIdx = 0;
   let browseStack: { path: string; idx: number; scrollTop: number }[] = [];
-  let fehOpen     = false;
+  let fehOpen = false;
 
   let moveModePending: { srcPaths: string[]; srcNames: string[]; label: string } | null = null;
 
@@ -122,14 +122,14 @@ export function interactiveDir(onExit: () => void): void {
         if (e.name.startsWith(".")) continue;
         const full = path.join(dir, e.name);
         let isDir = false;
-        try { isDir = e.isDirectory() || (e.isSymbolicLink() && fs.statSync(full).isDirectory()); } catch {}
+        try { isDir = e.isDirectory() || (e.isSymbolicLink() && fs.statSync(full).isDirectory()); } catch { }
         if (!isDir) continue;
         const relPath = path.relative(cwd, full);
         if (relPath.startsWith("..")) continue;
         results.push({ name: e.name, hidden: e.name.startsWith("."), relPath });
         if (!SKIP.has(e.name)) results.push(...scanRecursive(full, depth + 1));
       }
-    } catch {}
+    } catch { }
     return results;
   }
 
@@ -171,7 +171,7 @@ export function interactiveDir(onExit: () => void): void {
     const mode = getPreviewMode(previewPref);
     previewPref = mode === "split"
       ? (C() >= SPLIT_THRESHOLD ? "overlay" : "auto")
-      : (C() >= SPLIT_THRESHOLD ? "split"   : "auto");
+      : (C() >= SPLIT_THRESHOLD ? "split" : "auto");
   }
 
   function getActiveActionLabel(): string {
@@ -194,7 +194,7 @@ export function interactiveDir(onExit: () => void): void {
   function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
 
   function NAV(): NavRows {
-    const cb   = getClipboard() as any;
+    const cb = getClipboard() as any;
     const mode = getPreviewMode(previewPref);
     if (browseMode) {
       const be = getDirEntries(pvState.content ?? { kind: "empty" } as any);
@@ -205,40 +205,40 @@ export function interactiveDir(onExit: () => void): void {
           ? "Enter"
           : "Open";
       return [[
-        { key: "Nav", label: "Navigate"    },
+        { key: "Nav", label: "Navigate" },
         { key: "Ent", label: entLabelBrowse },
-        { key: "Tab", label: "Parent"      },
+        { key: "Tab", label: "Parent" },
         { key: "Esc", label: fehOpen ? "Close Preview" : "Back to List" },
       ]];
     }
     if (moveModePending) {
       return [[
-        { key: "Nav", label: "Navigate"                                 },
-        { key: "Ent", label: "Enter Dir"                                },
-        { key: "Tab", label: "Parent"                                   },
-        { key: ".",   label: showHidden ? "Hide Hidden" : "Show Hidden" },
+        { key: "Nav", label: "Navigate" },
+        { key: "Ent", label: "Enter Dir" },
+        { key: "Tab", label: "Parent" },
+        { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ]];
     }
     const oLabel = pvState.content?.kind === "dir" ? "Browse" : "Preview";
     return [
       [
-        { key: "Nav", label: "Navigate"  },
-        { key: "Spc", label: "Select"    },
-        { key: "A",   label: "All"       },
-        { key: "Ent", label: "Enter"     },
-        { key: "Tab", label: "Parent"    },
-        { key: "O",   label: oLabel      },
-        { key: "P",   label: mode === "split" ? "Overlay" : "Split" },
+        { key: "Nav", label: "Navigate" },
+        { key: "Spc", label: "Select" },
+        { key: "A", label: "All" },
+        { key: "Ent", label: "Enter" },
+        { key: "Tab", label: "Parent" },
+        { key: "O", label: oLabel },
+        { key: "P", label: mode === "split" ? "Overlay" : "Split" },
         { key: "Esc", label: cb ? "Cancel Clip" : selected.size > 0 ? "Deselect" : "Quit" },
       ],
       [
-        { key: "C", label: "Copy"   },
-        { key: "X", label: "Cut"    },
-        { key: "V", label: "Paste"  },
+        { key: "C", label: "Copy" },
+        { key: "X", label: "Cut" },
+        { key: "V", label: "Paste" },
         { key: "R", label: "Rename" },
-        { key: "M", label: "Move"   },
+        { key: "M", label: "Move" },
         { key: "D", label: "Delete" },
-        { key: "H", label: "History"},
+        { key: "H", label: "History" },
         { key: ".", label: showHidden ? "Hide Hidden" : "Show Hidden" },
       ],
     ];
@@ -258,7 +258,7 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function syncBrowseScroll(): void {
-    const metaLines   = getMetaLineCount(pvState.content!);
+    const metaLines = getMetaLineCount(pvState.content!);
     const totalOffset = 1 + metaLines;
     const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
     const targetLine = totalOffset + browseIdx;
@@ -318,14 +318,14 @@ export function interactiveDir(onExit: () => void): void {
   }
   function adjustScroll(): void {
     const row = Math.floor(selIdx / pr()); const v = vis();
-    if (row < scrollTop)      scrollTop = row;
+    if (row < scrollTop) scrollTop = row;
     if (row >= scrollTop + v) scrollTop = row - v + 1;
   }
 
   function navigate(key: string): boolean {
     const p = pr(); const total = entries.length; if (!total) return false;
     const curRow = Math.floor(selIdx / p); const curCol = selIdx % p; let next = selIdx;
-    if      (key === "\u001b[A") { if (curRow === 0) return false; next = (curRow - 1) * p + curCol; if (next >= total) next = total - 1; }
+    if (key === "\u001b[A") { if (curRow === 0) return false; next = (curRow - 1) * p + curCol; if (next >= total) next = total - 1; }
     else if (key === "\u001b[B") { if (curRow >= tr() - 1) return false; next = (curRow + 1) * p + curCol; if (next >= total) next = total - 1; }
     else if (key === "\u001b[D") { if (curCol === 0) { if (curRow === 0) return false; next = (curRow - 1) * p + Math.min(p - 1, total - 1 - (curRow - 1) * p); } else next = selIdx - 1; }
     else if (key === "\u001b[C") { if (selIdx >= total - 1) return false; if (curCol >= p - 1 || selIdx + 1 >= total) { const ns = (curRow + 1) * p; if (ns >= total) return false; next = ns; } else next = selIdx + 1; }
@@ -360,7 +360,7 @@ export function interactiveDir(onExit: () => void): void {
     let s = rel; s += `  ${entries.length}d`;
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
-    if (searchQuery)   s += chalk.cyan(`  /${searchQuery}`);
+    if (searchQuery) s += chalk.cyan(`  /${searchQuery}`);
     const al = getActiveActionLabel();
     if (al) s += "    " + al;
     s += "    " + buildGitStatus();
@@ -368,12 +368,19 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function buildRight(): string {
-    const mode    = getPreviewMode(previewPref);
-    const modeStr = browseMode ? chalk.cyan(" [browse]") : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
-    const pgHint  = pvState.content ? chalk.dim("  [PgUp/PgDn] Scroll") : "";
-    if (tr() <= vis()) return modeStr + pgHint;
-    const more = tr() - (scrollTop + vis());
-    return (more > 0 ? `↓ ${more} more` : "end") + modeStr + pgHint;
+    const mode = getPreviewMode(previewPref);
+    const modeStr = browseMode
+      ? chalk.cyan(" [browse]")
+      : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
+    const pgHint = pvState.content
+      ? "  " + chalk.white.bold("[") + chalk.cyan.bold("PgUp/PgDn") + chalk.white.bold("]") + chalk.dim(" Scroll")
+      : "";
+    const total = entries.length;
+    const v = vis();
+    if (tr() <= v) return pgHint + modeStr;
+    const more = tr() - (scrollTop + v);
+    const moreStr = more > 0 ? chalk.dim(`↓ ${more} more`) : chalk.dim("end");
+    return moreStr + pgHint + modeStr;
   }
 
   function drawMiniBar(): void {
@@ -401,24 +408,24 @@ export function interactiveDir(onExit: () => void): void {
 
   function drawMoveConfirmBar(): void {
     if (!moveModePending) return;
-    const cols  = C();
-    const line  = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label) +
-                  "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here") +
-                  "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
-    const vl    = visibleLen(line);
+    const cols = C();
+    const line = chalk.hex("#FFA878").bold("  Move ") + chalk.white(moveModePending.label) +
+      "  " + chalk.bgGreen.black.bold(" Y ") + chalk.white(" Move Here") +
+      "  " + chalk.bgRed.white.bold(" Esc ") + chalk.white(" Cancel");
+    const vl = visibleLen(line);
     w(at(R() - 1, 1) + "\x1b[2K\x1b[0m");
     w(at(R(), 1) + "\x1b[2K\x1b[0m" + line + (vl < cols ? " ".repeat(cols - vl) : ""));
   }
 
   function drawBottom(): void {
     if (statusMsg) { w(at(R(), 1) + "\x1b[2K\x1b[0m" + statusMsg); return; }
-    if (moveModePending) { drawMoveConfirmBar(); return; }
     drawMiniBar();
     const cols = C();
-    const ls   = "  " + buildLeft();
-    const rs   = buildRight() ? buildRight() + "  " : "";
-    const gap  = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
-    w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + chalk.dim(rs));
+    const ls = "  " + buildLeft();
+    const rs = buildRight() ? buildRight() + "  " : "";
+    const gap = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
+
+    w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + rs);
   }
 
   function showStatus(msg: string, isErr = false): void {
@@ -429,7 +436,7 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function drawContent(): void {
-    const lw    = effectiveListW();
+    const lw = effectiveListW();
     const start = NR() + 2; const p = pr(); const cWidth = cw(); const v = vis();
     let out = "";
     if (!entries.length) {
@@ -446,22 +453,22 @@ export function interactiveDir(onExit: () => void): void {
       for (let col = 0; col < p; col++) {
         const i = fr * p + col; if (i >= entries.length) break;
         const { name, hidden } = entries[i];
-        const isCursor   = i === selIdx; const isSel = selected.has(name);
+        const isCursor = i === selIdx; const isSel = selected.has(name);
         const itemAction = isItemActive(name);
-        const dispName   = name + "/";
-        const prefix     = isSel ? "✓ " : "  ";
-        const maxNameW   = Math.min(cWidth, lw - visCount) - prefix.length;
+        const dispName = name + "/";
+        const prefix = isSel ? "✓ " : "  ";
+        const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
-        const truncDisp  = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
-        const cell       = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
+        const truncDisp = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
+        const cell = (prefix + truncDisp).padEnd(cWidth, " ").slice(0, cWidth);
         if (visCount + cWidth > lw) break;
-        if      (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
-        else if (isCursor)          line += chalk.bgWhite.black.bold(cell);
-        else if (isSel)             line += chalk.magenta.bold(cell);
-        else if (itemAction)        line += cellActionStyle(itemAction, cell, hidden);
+        if (isCursor && isSel) line += chalk.bgMagenta.white.bold(cell);
+        else if (isCursor) line += chalk.bgWhite.black.bold(cell);
+        else if (isSel) line += chalk.magenta.bold(cell);
+        else if (itemAction) line += cellActionStyle(itemAction, cell, hidden);
         else if (isBookmarked(path.join(cwd, name))) line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
-        else if (hidden)            line += chalk.cyan(cell);
-        else                        line += chalk.blue.bold(cell);
+        else if (hidden) line += chalk.cyan(cell);
+        else line += chalk.blue.bold(cell);
         visCount += cWidth;
       }
       out += at(start + row, 1) + "\x1b[2K" + line + " ".repeat(Math.max(0, lw - visCount));
@@ -473,7 +480,7 @@ export function interactiveDir(onExit: () => void): void {
     if (!pvState.content) return;
     const bIdx = browseMode ? browseIdx : undefined;
     if (isSplit()) drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
-    else           drawOverlayPreview(pvState, NR(), bIdx);
+    else drawOverlayPreview(pvState, NR(), bIdx);
   }
 
   function render(): void { drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom(); }
@@ -488,7 +495,7 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function doCopy(): void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("copy") as any); selected.clear(); render(); }
-  function doCut():  void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("cut")  as any); selected.clear(); render(); }
+  function doCut(): void { const t = getTargets(); if (!t.length) return; setClipboard(buildMultiClip("cut") as any); selected.clear(); render(); }
 
   function doPaste(): void {
     const cb = getClipboard() as any; if (!cb) { showStatus("  nothing in clipboard", true); return; }
@@ -681,9 +688,9 @@ export function interactiveDir(onExit: () => void): void {
 
   function doBookmarkToggle(): void {
     if (!entries.length) return;
-    const entry    = entries[selIdx];
+    const entry = entries[selIdx];
     const fullPath = path.join(cwd, entry.name);
-    const result   = toggleBookmark(fullPath);
+    const result = toggleBookmark(fullPath);
     showStatus(result === "added" ? `  Bookmarked: ${entry.name}/` : `  Removed bookmark: ${entry.name}/`);
     render();
   }
@@ -693,7 +700,7 @@ export function interactiveDir(onExit: () => void): void {
     showBookmarkPicker(
       cwd,
       (dir) => {
-        try { cwd = dir; process.chdir(cwd); } catch {}
+        try { cwd = dir; process.chdir(cwd); } catch { }
         searchQuery = ""; searchActive = false;
         reloadEntries(cwd); enterAlt(); process.stdout.on("resize", onResize); clearScreen(); fullRedraw(); stdin.on("data", onKey);
       },
@@ -720,9 +727,9 @@ export function interactiveDir(onExit: () => void): void {
         return;
       }
       if (k === "\u001b[A") { browseNavigate(-1); return; }
-      if (k === "\u001b[B") { browseNavigate(1);  return; }
+      if (k === "\u001b[B") { browseNavigate(1); return; }
       if (k === "\u001b[5~") { browseNavigate(-5); return; }
-      if (k === "\u001b[6~") { browseNavigate(5);  return; }
+      if (k === "\u001b[6~") { browseNavigate(5); return; }
       if (k === "\t") { browseParent(); return; }
       if (k === "\r") { browseEnter(); return; }
       return;
@@ -737,7 +744,7 @@ export function interactiveDir(onExit: () => void): void {
       if (k === "\t") { goUp(); return; }
       if (k === ".") { toggleHidden(); return; }
       if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
-      if (k === "\u001b[6~") { scrollPreview(pvState,  5, vis()); renderPreview(); drawBottom(); return; }
+      if (k === "\u001b[6~") { scrollPreview(pvState, 5, vis()); renderPreview(); drawBottom(); return; }
       if (navigate(k)) render();
       return;
     }
@@ -771,7 +778,7 @@ export function interactiveDir(onExit: () => void): void {
     if (k === "m") { doMoveInit(); return; }
     if (k === "d" || k === "D") { if (entries.length) showDeleteConfirm(); return; }
     if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
-    if (k === "\u001b[6~") { scrollPreview(pvState,  5, vis()); renderPreview(); drawBottom(); return; }
+    if (k === "\u001b[6~") { scrollPreview(pvState, 5, vis()); renderPreview(); drawBottom(); return; }
     if (navigate(k)) render();
   }
 
