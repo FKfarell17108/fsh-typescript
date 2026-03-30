@@ -425,24 +425,34 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function buildGitStatus(): string {
     const targetDir = (() => {
-      if (entries.length && entries[selIdx]?.isDir) {
+      if (entries.length && (entries[selIdx] as any).isDir) {
         return path.join(currentDir, entries[selIdx].name);
       }
       return currentDir;
     })();
     const gs = getGitDirStatus(targetDir);
     if (gs.kind === "none") return chalk.red("no git");
-    return chalk.hex("#AEDD87")(`git: ${gs.repoName}`) + chalk.dim(` (${gs.branch})`);
+    let branchColor = chalk.green;
+    const b = gs.branch.toLowerCase();
+    if (b === "main" || b === "master") {
+      branchColor = chalk.hex("#FFD580");
+    } else if (b === "dev" || b === "develop") {
+      branchColor = chalk.cyan;
+    }
+    const repoPart = chalk.hex("#AEDD87")(`git: ${gs.repoName}`);
+    const branchPart = chalk.white.bold(" (") + branchColor.bold(gs.branch) + chalk.white.bold(")");
+    return repoPart + branchPart;
   }
 
   function buildLeft(): string {
-    const home = process.env.HOME ?? ""; const rel = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
+    const home = process.env.HOME ?? "";
+    const rel = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
     const dirs = entries.filter(e => e.isDir).length;
     const files = entries.length - dirs;
     const hidC = allEntries.filter(e => e.name.startsWith(".")).length;
-    let s = rel;
-    if (dirs) s += `  ${dirs}d`;
-    if (files) s += `  ${files}f`;
+    let s = chalk.dim(rel);
+    if (dirs) s += chalk.dim(`  ${dirs}d`);
+    if (files) s += chalk.dim(`  ${files}f`);
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
     if (searchQuery) s += chalk.cyan(`  /${searchQuery}`);
@@ -510,7 +520,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const rs = buildRight() ? buildRight() + "  " : "";
     const gap = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
 
-    w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + rs);
+    w(at(R(), 1) + "\x1b[2K\x1b[0m" + ls + " ".repeat(gap) + rs);
   }
 
   function showStatus(msg: string, isErr = false): void {

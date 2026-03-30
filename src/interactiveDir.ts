@@ -344,20 +344,30 @@ export function interactiveDir(onExit: () => void): void {
   function buildGitStatus(): string {
     const targetDir = (() => {
       if (entries.length) {
-        const full = path.join(cwd, entries[selIdx].name);
-        return full;
+        return path.join(cwd, entries[selIdx].name);
       }
       return cwd;
     })();
     const gs = getGitDirStatus(targetDir);
     if (gs.kind === "none") return chalk.red("no git");
-    return chalk.hex("#AEDD87")(`git: ${gs.repoName}`) + chalk.dim(` (${gs.branch})`);
+    let branchColor = chalk.green;
+    const b = gs.branch.toLowerCase();
+    if (b === "main" || b === "master") {
+      branchColor = chalk.hex("#FFD580"); // Gold
+    } else if (b === "dev" || b === "develop") {
+      branchColor = chalk.cyan; // Cyan
+    }
+    const repoPart = chalk.hex("#AEDD87")(`git: ${gs.repoName}`);
+    const branchPart = chalk.white.bold(" (") + branchColor.bold(gs.branch) + chalk.white.bold(")");
+    return repoPart + branchPart;
   }
 
   function buildLeft(): string {
-    const home = process.env.HOME ?? ""; const rel = cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
+    const home = process.env.HOME ?? "";
+    const rel = cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
     const hidC = allEntries.filter(e => e.hidden).length;
-    let s = rel; s += `  ${entries.length}d`;
+    let s = chalk.dim(rel);
+    s += chalk.dim(`  ${entries.length}d`);
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
     if (searchQuery) s += chalk.cyan(`  /${searchQuery}`);
@@ -425,7 +435,7 @@ export function interactiveDir(onExit: () => void): void {
     const rs = buildRight() ? buildRight() + "  " : "";
     const gap = Math.max(0, cols - visibleLen(ls) - visibleLen(rs));
 
-    w(at(R(), 1) + "\x1b[2K\x1b[0m" + chalk.dim(ls) + " ".repeat(gap) + rs);
+    w(at(R(), 1) + "\x1b[2K\x1b[0m" + ls + " ".repeat(gap) + rs);
   }
 
   function showStatus(msg: string, isErr = false): void {
