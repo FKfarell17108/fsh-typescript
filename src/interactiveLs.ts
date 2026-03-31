@@ -738,8 +738,17 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     function drawEditor(): void {
       drawNavbar([editorNav]);
       let out = at(3, 1) + "\x1b[2K" + " " + chalk.dim("choose editor:");
-      let line = " "; for (let i = 0; i < editors.length; i++) { const name = editors[i].padEnd(EW, " "); line += i === eSel ? chalk.bgWhite.black.bold(name) : chalk.cyan(name); }
-      out += at(4, 1) + "\x1b[2K" + line; w(out); drawBottomBar(path.basename(filePath), "");
+      let line = " ";
+      for (let i = 0; i < editors.length; i++) {
+        const name = " " + editors[i] + " ";
+        const paddedName = name.padEnd(EW + 2, " ");
+        line += i === eSel
+          ? chalk.bgWhite.black.bold(paddedName)
+          : chalk.cyan(paddedName);
+      }
+      out += at(4, 1) + "\x1b[2K" + line;
+      w(out);
+      drawBottomBar(path.basename(filePath), "");
     }
     const onER = () => { clearScreen(); drawEditor(); };
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onER); stdin.removeListener("data", onKey);
