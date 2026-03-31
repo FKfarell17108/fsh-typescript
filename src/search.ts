@@ -18,11 +18,29 @@ const CATEGORY_ICON: Record<ResultKind, string> = { history: "  ", dir: "▸ ", 
 function shortenPath(p: string): string { const home = process.env.HOME ?? ""; return p.startsWith(home) ? "~" + p.slice(home.length) : p; }
 
 function fuzzyScore(query: string, target: string): number {
-  if (query === "") return 1; const q = query.toLowerCase(); const t = target.toLowerCase();
-  if (t === q) return 100; if (t.startsWith(q)) return 80; if (t.includes(q)) return 60;
-  let qi = 0, score = 0, consecutive = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) { if (t[ti] === q[qi]) { consecutive++; score += 10 + consecutive * 2; qi++; } else consecutive = 0; }
-  if (qi < q.length) return 0; return score;
+  if (query === "") return 1;
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  const tokens = q.split(/\s+/).filter(token => token.length > 0);
+  if (tokens.length === 0) return 1;
+  let totalScore = 0;
+  let matchesAllTokens = true;
+  for (const token of tokens) {
+    if (t.includes(token)) {
+      totalScore += 20;
+      if (t.startsWith(token) || t.includes("-" + token) || t.includes("_" + token) || t.includes("/" + token)) {
+        totalScore += 30;
+      }
+    } else {
+      matchesAllTokens = false;
+      break;
+    }
+  }
+  if (!matchesAllTokens) return 0;
+  if (t.includes(q.replace(/\s+/g, ""))) totalScore += 20;
+  if (t.includes(q.replace(/\s+/g, "-"))) totalScore += 25;
+
+  return totalScore;
 }
 
 function getInstalledEditors(): string[] { return EDITOR_CANDIDATES.filter(e => { try { execFileSync("which", [e], { stdio: "ignore" }); return true; } catch { return false; } }); }
@@ -38,8 +56,8 @@ function searchFilesystem(query: string, rootDirs: string[], maxResults = 40): S
       if (e.name.startsWith(".") && depth > 1) continue;
       const score = fuzzyScore(query, e.name);
       if (score > 0) {
-        const full    = path.join(dir, e.name);
-        const isDir   = e.isDirectory();
+        const full = path.join(dir, e.name);
+        const isDir = e.isDirectory();
         const display = isDir ? e.name + "/" : e.name;
         results.push({ r: { kind: isDir ? "dir" : "file", value: e.name, display, sub: shortenPath(dir), fullPath: full }, score });
       }
@@ -57,7 +75,7 @@ function searchHistory(query: string, entries: HistoryEntry[]): SearchResult[] {
 
 function searchExecutables(query: string): SearchResult[] {
   if (query.length < 2) return []; const seen = new Set<string>(); const hits: { name: string; score: number; dir: string }[] = [];
-  for (const dir of (process.env.PATH ?? "").split(":")) { try { for (const entry of fs.readdirSync(dir)) { const score = fuzzyScore(query, entry); if (score > 0 && !seen.has(entry)) { seen.add(entry); hits.push({ name: entry, score, dir }); } } } catch {} }
+  for (const dir of (process.env.PATH ?? "").split(":")) { try { for (const entry of fs.readdirSync(dir)) { const score = fuzzyScore(query, entry); if (score > 0 && !seen.has(entry)) { seen.add(entry); hits.push({ name: entry, score, dir }); } } } catch { } }
   return hits.sort((a, b) => b.score - a.score).slice(0, 15).map(h => ({ kind: "executable" as ResultKind, value: h.name, display: h.name, fullPath: path.join(h.dir, h.name), sub: shortenPath(h.dir) }));
 }
 
@@ -74,25 +92,27 @@ function buildRows(grouped: Map<ResultKind, SearchResult[]>): Row[] {
 
 function kindColor(kind: ResultKind, hidden = false): (s: string) => string {
   switch (kind) {
-    case "history":    return chalk.white;
-    case "dir":        return hidden ? chalk.cyan : chalk.blue.bold;
-    case "file":       return hidden ? chalk.gray : chalk.white;
-    case "builtin":    return chalk.green.bold;
-    case "alias":      return chalk.green;
+    case "history": return chalk.white;
+    case "dir": return hidden ? chalk.cyan : chalk.blue.bold;
+    case "file": return hidden ? chalk.gray : chalk.white;
+    case "builtin": return chalk.green.bold;
+    case "alias": return chalk.green;
     case "executable": return chalk.hex("#C3E88D");
   }
 }
 
 export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: string) => void, onCancel: () => void): void {
   const stdin = process.stdin;
-  let query = ""; let selIdx = 0; let scrollTop = 0; let rows: Row[] = [];
+  let query = ""; let cursorPos = 0; let selIdx = 0; let scrollTop = 0; let rows: Row[] = [];
+  let previewScroll = 0;
+  let inEditorPicker = false;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   const home = process.env.HOME ?? ""; const cwd = process.cwd(); const rootDirs = Array.from(new Set([cwd, home])).filter(Boolean);
 
   const NAV: NavItem[] = [
-    { key: "Nav", label: "Navigate"},
-    { key: "Ent", label: "Select"  },
-    { key: "Esc", label: "Cancel"  },
+    { key: "Nav", label: "Navigate" },
+    { key: "Ent", label: "Select" },
+    { key: "Esc", label: "Cancel" },
   ];
 
   function NR(): number { return 2; }
@@ -123,31 +143,49 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
   function drawSearchBar(): void {
     const cols = C(); const sRow = searchBarRow();
-    const prefix = chalk.bgBlack.white(" search ") + " "; const cursor = chalk.bgWhite.black(" ");
+    const prefix = chalk.bgBlack.white(" search ") + " ";
+    const before = query.slice(0, cursorPos);
+    const after = query.slice(cursorPos);
+    const charAtCursor = after[0] || " ";
+    const rest = after.slice(1);
+    const cursor = chalk.bgWhite.black(charAtCursor);
+    const line = prefix + chalk.white(before) + cursor + chalk.white(rest);
     const padLen = Math.max(0, cols - visibleLen(prefix) - query.length - 1);
-    w(at(sRow, 1) + clr() + prefix + chalk.white(query) + cursor + " ".repeat(padLen));
+    w(at(sRow, 1) + clr() + line + " ".repeat(padLen));
   }
 
   function drawResults(): void {
     const cs = contentStart(); const cols = C(); const v = vis(); let out = "";
     for (let i = 0; i < v; i++) {
-      out += at(cs + i, 1) + clr(); const row = rows[scrollTop + i]; if (!row) continue; const active = (scrollTop + i) === selIdx;
+      out += at(cs + i, 1) + clr();
+      const row = rows[scrollTop + i];
+      if (!row) continue;
+      const active = (scrollTop + i) === selIdx;
       if (row.kind === "header") {
         const label = `  ${CATEGORY_LABEL[row.category]}  (${row.count})`;
         out += active ? chalk.bgYellow.black.bold(label.padEnd(cols)) : chalk.yellow.bold(label);
       } else {
-        const r = row.result; const icon = CATEGORY_ICON[r.kind];
+        const r = row.result;
+        const icon = CATEGORY_ICON[r.kind];
         const hidden = r.display.startsWith(".");
-        const color  = kindColor(r.kind, hidden);
+        const color = kindColor(r.kind, hidden);
         const subLen = visibleLen(r.sub);
         const maxDisp = Math.max(8, cols - icon.length - subLen - 6);
         const display = r.display.length > maxDisp ? r.display.slice(0, maxDisp - 1) + "…" : r.display;
-        const left = ("  " + icon + display).padEnd(cols - subLen - 2);
-        out += active ? chalk.bgWhite.black.bold(left) + "  " + chalk.bgWhite.dim(r.sub.slice(0, subLen)) : color(left) + "  " + chalk.dim(r.sub);
+        if (active) {
+          const leftPart = "  " + icon + display;
+          const fullRowText = leftPart.padEnd(cols - subLen - 2) + "  " + r.sub;
+          out += chalk.bgWhite.black.bold(fullRowText.padEnd(cols));
+        } else {
+          const leftPart = ("  " + icon + display).padEnd(cols - subLen - 2);
+          out += color(leftPart) + "  " + chalk.dim(r.sub);
+        }
       }
     }
+
     for (let i = Math.max(0, rows.length - scrollTop); i < v; i++) out += at(cs + i, 1) + clr();
     if (rows.length === 0 && query.length > 0) out += at(cs, 1) + clr() + chalk.gray("  (no results)");
+
     w(out);
   }
 
@@ -158,7 +196,7 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
   function handleSelect(result: SearchResult): void {
     if (result.kind === "history" || result.kind === "builtin" || result.kind === "alias" || result.kind === "executable") { cleanup(); setTimeout(() => onSelect(result.value), 20); return; }
-    if (result.kind === "dir")  { showDirAction(result);  return; }
+    if (result.kind === "dir") { showDirAction(result); return; }
     if (result.kind === "file") { showFileAction(result); return; }
   }
 
@@ -184,48 +222,154 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     const onAR = () => { clearScreen(); drawAction(); };
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onAR); stdin.removeListener("data", onKey);
     function onActionKey(k: string): void {
-      if (k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onActionKey); process.stdout.removeListener("resize", onAR); process.stdout.on("resize", onResize); clearScreen(); render(); stdin.on("data", onKey); return; }
-      if (k === "\r" || k === "c" || k === "C") { stdin.removeListener("data", onActionKey); process.stdout.removeListener("resize", onAR); try { process.chdir(full); } catch {} cleanup(); setTimeout(() => onCancel(), 20); }
+      if (k === "\u001b" || k === "\u0003") { }
+      if (k === "\r" || k === "c" || k === "C") {
+        stdin.removeListener("data", onActionKey);
+        process.stdout.removeListener("resize", onAR);
+        try { process.chdir(full); } catch { }
+        cleanup();
+        setTimeout(() => onSelect(""), 20);
+      }
     }
     stdin.on("data", onActionKey); clearScreen(); drawAction();
   }
 
   function showFileAction(result: SearchResult): void {
-    const full = result.fullPath; const editors = getInstalledEditors();
-    if (!editors.length) { cleanup(); setTimeout(() => onCancel(), 20); return; }
-    const EW = Math.max(...editors.map(e => e.length)) + 2; let eSelIdx = 0;
-    const fileNav: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
+    const full = result.fullPath;
+    const editors = getInstalledEditors();
+    const EW = Math.max(...editors.map(e => e.length)) + 2;
+    let eSelIdx = 0;
+    inEditorPicker = false;
+
+    const fileNav: NavItem[] = [
+      { key: "Up/Dn", label: "Scroll" },
+      { key: "Ent", label: "Choose Editor" },
+      { key: "Esc", label: "Back" }
+    ];
+
     function drawFileAction(): void {
-      const nr = 3; const start = nr + 2; const avail = R() - nr - 3;
-      drawNavbar([fileNav]); let out = ""; let ln = 0;
-      function line(content: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + content; ln++; }
-      const hidden = result.display.startsWith(".");
-      line((hidden ? chalk.gray : chalk.white)("  " + result.display) + "  " + chalk.dim(result.sub)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
+      const cols = C();
+      const rowsCount = R();
+      const start = 3;
+      const avail = rowsCount - 6;
+
+      drawNavbar([fileNav]);
+
+      let out = "";
+      let ln = 0;
+      const stats = fs.statSync(full);
+      const sizeStr = (stats.size / 1024).toFixed(1) + " KB";
+      const modStr = stats.mtime.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+      const line = (content: string) => {
+        if (ln >= avail) return;
+        out += at(start + ln, 1) + clr() + content;
+        ln++;
+      };
+
+      line(chalk.dim("  size     ") + chalk.white(sizeStr));
+      line(chalk.dim("  modified ") + chalk.white(modStr));
+      line(chalk.dim("  type     ") + chalk.white(path.extname(full).slice(1) || "file"));
+      line(chalk.dim("─".repeat(cols)));
+
       try {
-        const lines = fs.readFileSync(full, "utf8").split("\n").slice(0, avail - 2);
-        for (const fl of lines) { const d = fl.length > C() - 4 ? fl.slice(0, C() - 5) + "…" : fl; line(chalk.white("  " + d)); }
-        const total = fs.readFileSync(full, "utf8").split("\n").length; if (total > avail - 2) line(chalk.gray(`  ... ${total - (avail - 2)} more lines`));
-      } catch { line(chalk.gray("  (binary file)")); }
+        const allLines = fs.readFileSync(full, "utf8").split("\n");
+        const contentAvail = avail - ln;
+
+        if (previewScroll > allLines.length - contentAvail) {
+          previewScroll = Math.max(0, allLines.length - contentAvail);
+        }
+
+        const visibleLines = allLines.slice(previewScroll, previewScroll + contentAvail);
+        for (let i = 0; i < visibleLines.length; i++) {
+          const lineNum = chalk.dim((previewScroll + i + 1).toString().padStart(4) + " ");
+          const contentText = visibleLines[i].length > cols - 7 ? visibleLines[i].slice(0, cols - 8) + "…" : visibleLines[i];
+          line(lineNum + chalk.white(contentText));
+        }
+      } catch { line(chalk.gray("  (cannot read file)")); }
+
       for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      out += at(start + avail, 1) + clr() + chalk.dim("  open with:");
-      let eLine = "  "; for (let i = 0; i < editors.length; i++) { const name = editors[i].padEnd(EW, " "); eLine += i === eSelIdx ? chalk.bgWhite.black.bold(name) : chalk.cyan(name); }
-      out += at(start + avail + 1, 1) + clr() + eLine; w(out); drawBottomBar(result.display, "");
+
+      const infoRow = rowsCount - 2;
+      const promptRow = rowsCount - 1;
+
+      if (!inEditorPicker) {
+        out += at(infoRow, 1) + clr() + chalk.white("  file: ") + chalk.white.bold(path.basename(full));
+        out += at(promptRow, 1) + clr() + chalk.white("  Press ") + chalk.white("[") + chalk.blue.bold("Enter") + chalk.white("]") + chalk.white(" to open editor...");
+      } else {
+        out += at(infoRow, 1) + clr() + chalk.yellow.bold(`  Choose your editor code for open ${path.basename(full)}:`);
+        let eLine = "  ";
+        for (let i = 0; i < editors.length; i++) {
+          const name = " " + editors[i] + " ";
+          const paddedName = name.padEnd(EW + 2, " ");
+          eLine += i === eSelIdx ? chalk.bgWhite.black.bold(paddedName) : chalk.cyan(paddedName);
+        }
+        out += at(promptRow, 1) + clr() + eLine;
+      }
+
+      w(out);
+      drawBottomBar("", "");
     }
+
     const onFR = () => { clearScreen(); drawFileAction(); };
-    process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onFR); stdin.removeListener("data", onKey);
+    process.stdout.on("resize", onFR);
+    stdin.removeListener("data", onKey);
+
     function onFileKey(k: string): void {
-      if (k === "\u001b" || k === "\u0003") { stdin.removeListener("data", onFileKey); process.stdout.removeListener("resize", onFR); process.stdout.on("resize", onResize); clearScreen(); render(); stdin.on("data", onKey); return; }
-      if (k === "\r") { const chosen = editors[eSelIdx]; stdin.removeListener("data", onFileKey); process.stdout.removeListener("resize", onFR); cleanup(); setTimeout(() => onSelect(`${chosen} "${full}"`), 20); return; }
-      const pr = Math.max(1, Math.floor(C() / EW)); let i = eSelIdx;
-      if (k === "\u001b[C") i = Math.min(editors.length - 1, i + 1); else if (k === "\u001b[D") i = Math.max(0, i - 1);
-      if (i !== eSelIdx) { eSelIdx = i; drawFileAction(); }
+      if (k === "\u001b" || k === "\u0003") {
+        if (inEditorPicker) { inEditorPicker = false; drawFileAction(); return; }
+        previewScroll = 0;
+        stdin.removeListener("data", onFileKey);
+        process.stdout.removeListener("resize", onFR);
+        clearScreen(); render(); stdin.on("data", onKey);
+        return;
+      }
+
+      const allLinesCount = fs.readFileSync(full, "utf8").split("\n").length;
+      const visCount = R() - 10;
+
+      if (k === "\u001b[A") { previewScroll = Math.max(0, previewScroll - 1); drawFileAction(); return; }
+      if (k === "\u001b[B") {
+        if (previewScroll + visCount < allLinesCount) {
+          previewScroll++; drawFileAction();
+        }
+        return;
+      }
+      if (k === "\u001b[5~") { previewScroll = Math.max(0, previewScroll - 10); drawFileAction(); return; }
+      if (k === "\u001b[6~") {
+        if (previewScroll + visCount < allLinesCount) {
+          previewScroll = Math.min(allLinesCount - visCount, previewScroll + 10);
+          drawFileAction();
+        }
+        return;
+      }
+
+      if (k === "\r") {
+        if (!inEditorPicker) {
+          inEditorPicker = true;
+          drawFileAction();
+        } else {
+          const chosen = editors[eSelIdx];
+          stdin.removeListener("data", onFileKey);
+          process.stdout.removeListener("resize", onFR);
+          try { process.chdir(path.dirname(full)); } catch { }
+          cleanup();
+          setTimeout(() => onSelect(`${chosen} "${full}"`), 20);
+        }
+        return;
+      }
+
+      if (inEditorPicker) {
+        if (k === "\u001b[C") { eSelIdx = Math.min(editors.length - 1, eSelIdx + 1); drawFileAction(); }
+        else if (k === "\u001b[D") { eSelIdx = Math.max(0, eSelIdx - 1); drawFileAction(); }
+      }
     }
-    stdin.on("data", onFileKey); clearScreen(); drawFileAction();
+    stdin.on("data", onFileKey); onFR();
   }
 
   function navigate(key: string): boolean {
     const total = rows.length; if (total === 0) return false; let next = selIdx;
-    if      (key === "\u001b[A") { next = selIdx - 1; while (next >= 0 && rows[next].kind === "header") next--; if (next < 0) return false; }
+    if (key === "\u001b[A") { next = selIdx - 1; while (next >= 0 && rows[next].kind === "header") next--; if (next < 0) return false; }
     else if (key === "\u001b[B") { next = selIdx + 1; while (next < total && rows[next].kind === "header") next++; if (next >= total) return false; }
     else { return false; }
     selIdx = next; adjustScroll(); return true;
@@ -236,8 +380,30 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     if (k === "\u0003" || k === "\u001b") { cleanup(); setTimeout(onCancel, 20); return; }
     if (k === "\r") { const row = rows[selIdx]; if (row?.kind === "result") handleSelect(row.result); return; }
     if (navigate(k)) { render(); return; }
-    if (k === "\x7f" || k === "\u0008") { if (query.length > 0) { query = query.slice(0, -1); scheduleSearch(); render(); } return; }
-    if (k.length === 1 && k >= " ") { query += k; scheduleSearch(); render(); return; }
+    if (k === "\u001b[D") {
+      if (cursorPos > 0) { cursorPos--; render(); }
+      return;
+    }
+    if (k === "\u001b[C") {
+      if (cursorPos < query.length) { cursorPos++; render(); }
+      return;
+    }
+    if (k === "\x7f" || k === "\u0008") {
+      if (cursorPos > 0) {
+        query = query.slice(0, cursorPos - 1) + query.slice(cursorPos);
+        cursorPos--;
+        scheduleSearch();
+        render();
+      }
+      return;
+    }
+    if (k.length === 1 && k >= " ") {
+      query = query.slice(0, cursorPos) + k + query.slice(cursorPos);
+      cursorPos++;
+      scheduleSearch();
+      render();
+      return;
+    }
   }
 
   process.stdout.on("resize", onResize); stdin.setRawMode(true); stdin.resume(); stdin.setEncoding("utf8"); stdin.on("data", onKey);
