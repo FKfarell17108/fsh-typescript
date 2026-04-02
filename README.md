@@ -1,4 +1,4 @@
-# FSH (FK Shell) v2.1.1
+# FSH (FK Shell) v2.1.2
 
 > A custom Unix shell, developed using TypeScript, and designed specifically for FK Universe to deliver a unique terminal experience.
 
