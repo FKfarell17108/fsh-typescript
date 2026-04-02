@@ -21,14 +21,21 @@ function fuzzyScore(query: string, target: string): number {
   if (query === "") return 1;
   const q = query.toLowerCase();
   const t = target.toLowerCase();
+
+  const tNormalized = t.replace(/[-_\s\.]/g, "");
+  const qNormalized = q.replace(/[\s\.]/g, "");
+
   const tokens = q.split(/\s+/).filter(token => token.length > 0);
   if (tokens.length === 0) return 1;
+
   let totalScore = 0;
   let matchesAllTokens = true;
+
   for (const token of tokens) {
-    if (t.includes(token)) {
+    if (t.includes(token) || tNormalized.includes(token)) {
       totalScore += 20;
-      if (t.startsWith(token) || t.includes("-" + token) || t.includes("_" + token) || t.includes("/" + token)) {
+
+      if (t.startsWith(token) || t.includes("-" + token) || t.includes("_" + token) || t.includes("." + token)) {
         totalScore += 30;
       }
     } else {
@@ -36,9 +43,12 @@ function fuzzyScore(query: string, target: string): number {
       break;
     }
   }
+
   if (!matchesAllTokens) return 0;
-  if (t.includes(q.replace(/\s+/g, ""))) totalScore += 20;
-  if (t.includes(q.replace(/\s+/g, "-"))) totalScore += 25;
+
+  if (tNormalized.includes(qNormalized)) {
+    totalScore += 30;
+  }
 
   return totalScore;
 }
