@@ -14,6 +14,78 @@
 
 ## Changelog
 
+### v2.1.2 - Patch
+
+#### Image Preview with feh
+- **Image detection** - FSH detects image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp`, `.ico`, `.tiff`, `.tif`) in both `ls` and `dir`
+- **`O`** on an image file in browse mode opens it in an external `feh` window with automatic sizing and centering
+- **`Enter`** on an image file in `ls` opens it directly with `feh` instead of the editor picker
+- FSH reads raw image dimensions from binary headers (PNG IHDR, JPEG SOF, GIF logical screen, BMP DIB) and scales the `feh` window to fit the screen, centering it automatically
+- Preview panel shows image metadata: dimensions (`width×height`), file size, modified date, permissions, and file type
+- `feh` window is automatically closed when navigating away from the image or when the browser exits
+- **`Esc`** in browse mode while a `feh` window is open closes the preview without leaving the browser
+- `closeImagePreview()` is called on shell exit and SIGINT to ensure no orphaned `feh` processes remain
+
+#### Extended Syntax Highlighting
+- **Per-category command coloring** - commands are now colored based on their category rather than a single green color:
+
+| Category | Color | Examples |
+|---|---|---|
+| Builtins / Aliases | Bright green / Light green | `ls`, `cd`, `clear` |
+| Editors | Purple | `vim`, `nvim`, `nano`, `code` |
+| Git tools | Orange | `git`, `gh`, `hub` |
+| Node / npm | Teal | `node`, `npm`, `npx`, `yarn`, `bun` |
+| Python | Gold | `python`, `pip`, `poetry` |
+| System | Red-pink | `sudo`, `systemctl`, `apt`, `kill` |
+| Network | Light blue | `curl`, `wget`, `ssh`, `ping` |
+| File ops | Light green | `cp`, `mv`, `rm`, `grep`, `find` |
+| Docker / k8s | Sky blue | `docker`, `kubectl`, `helm` |
+| Build tools | Yellow | `make`, `gcc`, `tsc`, `cargo` |
+| Shell utils | Blue-grey | `bash`, `env`, `which`, `man` |
+
+- **Subcommand coloring** - first argument after `git`, `npm`/`npx`, `docker`, and `sudo`-like commands gets semantic coloring:
+  - `git add / commit / push / tag` → green; `git reset / rm / clean` → red; others → gold
+  - `npm install / ci` → teal; `npm uninstall` → red; `npm run / start` → green
+  - `docker run / build / start` → green; `docker rm / rmi / stop` → red; others → sky blue
+  - Arguments after `sudo` / `su` / `doas` → red
+- **Destructive flag detection** - flags containing `force`, `hard`, `delete`, `remove`, `purge`, `nuke` are colored red; `help`, `version`, `verbose`, `dry-run` are light blue; `output`, `format`, `config`, `file` flags are orange
+- **Number argument coloring** - standalone numeric arguments are colored orange (e.g. `sleep 5`, `kill -9 1234`)
+- **Path argument coloring** - arguments that resolve to real paths are colored by type:
+  - Existing directory → light blue; hidden directory → dim blue
+  - Existing file → white / dim for hidden files
+  - Non-existent path → dim red
+- **Executable cache** - PATH executables are cached for 5 seconds with background refresh to keep highlighting fast without blocking input
+- **Incomplete string detection** - unterminated `"` or `'` strings are colored amber instead of the normal string color
+
+---
+
+### v2.1.1 - Patch
+
+#### Fuzzy Search File Preview
+- **Selecting a file** in `search` / `Ctrl+R` now opens an inline file preview instead of immediately launching an editor
+- Preview shows file metadata (size, modified date, file type) followed by syntax-highlighted content with line numbers
+- **`↑↓` / `PgUp`/`PgDn`** scrolls the file content inside the preview
+- **`Enter`** opens the editor picker when viewing a file — choose from all installed editors
+- **`←→`** navigates between editor choices in the picker row
+- **`Esc`** returns to the search results without opening anything
+- Directory results still open a folder preview showing children before `cd`-ing in
+
+#### Activity Log Category Editor
+- **`Enter` on a category header** in the activity log now opens a dedicated category editor screen for Commands, File & Folder Mutations, or Trash Operations
+- Category editor supports **multi-select** (`Space` / `A`) and **bulk delete** (`X`)
+- **`D`** inside a category editor deletes all entries in that category at once (with no confirmation — matches the history manager behavior)
+- **`Enter` on a command entry** in the Commands category pastes it directly to the prompt (same as the history manager)
+- **`Enter` on a non-command entry** opens the detail view for that entry
+- Back navigation returns to the main activity log without losing scroll position
+
+#### Multi-item Clipboard
+- Copy (`C`) and cut (`X`) in `ls` and `dir` now package all **selected items** into a single clipboard operation
+- Clipboard stores an `items[]` array; paste (`V`) iterates over all items and executes each copy/move in sequence
+- The clipboard indicator in the bottom bar shows the item count when multiple items are selected (e.g. `Copy: 4 items`)
+- Error count is reported after paste if any individual item fails; successful items still complete
+
+---
+
 ### v2.1.0 - Feature Update
 
 #### Preview Panel (`ls` and `dir`)
@@ -201,7 +273,7 @@ Grid layout with color coding, preview panel, and git status. Navigate entirely 
 | `b` | Toggle bookmark on directory at cursor |
 | `Ctrl+B` | Open bookmark picker |
 | `/` | Quick search (recursive, fuzzy) |
-| `o` | Enter browse mode in preview panel |
+| `o` | Enter browse mode in preview panel / open image with feh |
 | `p` | Toggle split / overlay preview |
 | `PgUp / PgDn` | Scroll preview panel |
 | `.` | Toggle hidden files on / off |
@@ -230,6 +302,8 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 │                      │  3  > A custom...   │
 └──────────────────────┴─────────────────────┘
 ```
+
+**Image preview**: selecting an image file shows its dimensions and metadata in the preview panel, and pressing `O` or `Enter` opens it in a `feh` window.
 
 **Browse mode** (`O`): navigate inside the preview panel's directory listing without entering it in the main grid.
 
@@ -325,14 +399,34 @@ fsh/fsh-universe (main ●↑2) >
 
 ### Syntax Highlight While Typing
 
-| Token | Color |
-|---|---|
-| Valid command | Green |
-| Invalid command | Red |
-| Flags (`-v`, `--help`) | Yellow |
-| Operators (`\|`, `&&`) | Cyan |
-| Strings (`"hello"`) | Orange |
-| Variables (`$HOME`) | Magenta |
+Commands are colored by category. The table below shows the full color scheme:
+
+| Token | Color | Examples |
+|---|---|---|
+| Builtin / valid command | Bright green | `ls`, `cd`, `clear` |
+| Alias | Light green | any defined alias |
+| Editor | Purple | `vim`, `nvim`, `nano`, `code` |
+| Git tools | Orange | `git`, `gh` |
+| Node / npm | Teal | `node`, `npm`, `npx`, `yarn` |
+| Python tools | Gold | `python`, `pip` |
+| System / sudo | Red-pink | `sudo`, `kill`, `apt` |
+| Network tools | Light blue | `curl`, `ssh`, `ping` |
+| File operations | Light green | `cp`, `mv`, `grep`, `find` |
+| Docker / k8s | Sky blue | `docker`, `kubectl` |
+| Build tools | Yellow | `make`, `tsc`, `cargo` |
+| Shell utils | Blue-grey | `bash`, `env`, `man` |
+| Invalid command | Red | anything not found |
+| Subcommand | Semantic | `git add` → green, `git reset` → red |
+| Flags (`-v`, `--help`) | Yellow / Light blue | varies by flag name |
+| Destructive flags | Red | `--force`, `--delete`, `-f` |
+| Operators (`\|`, `&&`) | Cyan | `\|`, `&&`, `\|\|` |
+| Redirects (`>`, `>>`) | Orange | `>`, `>>`, `<` |
+| Double-quoted strings | Orange-gold | `"hello"` |
+| Single-quoted strings | Light green | `'hello'` |
+| Incomplete strings | Amber | unterminated `"` or `'` |
+| Variables (`$HOME`) | Magenta | `$HOME`, `$USER`, `$PATH` |
+| Numeric arguments | Orange | `5`, `1234`, `3.14` |
+| Path arguments | Blue / White / Red | based on whether path exists |
 
 ### History Manager (`history`)
 
@@ -357,9 +451,12 @@ Full-screen search across all sources simultaneously.
 | Type | Filter results in real time |
 | `↑↓` | Navigate results |
 | `Enter` on command | Use command |
-| `Enter` on directory | `cd` into it |
-| `Enter` on file | Open with editor picker |
-| `Esc` | Cancel |
+| `Enter` on directory | Preview folder contents, then `cd` into it |
+| `Enter` on file | Open inline file preview with scroll |
+| `↑↓` / `PgUp/PgDn` | Scroll file preview content |
+| `Enter` in file preview | Open editor picker |
+| `←→` | Navigate editor choices |
+| `Esc` | Cancel / back to results |
 
 Results are categorized: Command history, Directories, Files, Builtins, Aliases, Executables.
 
@@ -372,6 +469,13 @@ Centralized log of all shell activity. Persisted to `~/.fsh_general_history.json
 | Commands | Every command executed |
 | File & Folder Mutations | Copy, move, rename operations |
 | Trash Operations | Trash, restore, delete, empty trash |
+
+Press `Enter` on a category header to open the **category editor**:
+- Navigate, select, and bulk-delete entries within that category
+- `Enter` on a command entry pastes it to the prompt
+- `Enter` on a non-command entry opens its detail view
+- `D` deletes all entries in the category
+- `Esc` returns to the main activity log
 
 ### File Operations Log (`h` inside `ls` or `dir`)
 
@@ -451,20 +555,23 @@ The bottom bar left side now includes the **git status indicator** for the folde
 | Git info in prompt | Plugin needed | ✅ Built-in |
 | Git status in file browser | ❌ | ✅ Per-file badges + bottom bar |
 | File preview panel | ❌ | ✅ Split + overlay, with browse mode |
+| Image preview with feh | ❌ | ✅ Auto-sized, auto-centered |
 | Quick search in browser | ❌ | ✅ `/` recursive fuzzy search |
-| Syntax highlight while typing | Plugin needed | ✅ Built-in |
+| Syntax highlight while typing | Plugin needed | ✅ Built-in, per-category colors |
 | History manager UI | ❌ | ✅ Grouped by time |
 | Custom neofetch | ❌ | ✅ Built-in |
 | Nano-style keyboard navigation | ❌ | ✅ All TUI screens |
 | Persistent bottom status bar | ❌ | ✅ Path + git + scroll info |
 | Show / hide hidden files toggle | ❌ | ✅ Press `.` in ls / dir |
-| In-shell copy / cut / paste | ❌ | ✅ With persistent clipboard |
+| In-shell copy / cut / paste | ❌ | ✅ With persistent multi-item clipboard |
 | File operations log | ❌ | ✅ Tracked with id + timestamp |
 | Undo file operations | ❌ | ✅ Move back, rename back, delete copy |
 | Sort options in browser | ❌ | ✅ Name, type, size, date, hidden last |
 | Create files/folders inline | ❌ | ✅ `n` and `t` with inline input |
 | Pinned/bookmark directories | ❌ | ✅ Gold color + persistent |
 | Centralized activity log | ❌ | ✅ Commands + file ops + trash |
+| Activity log category editor | ❌ | ✅ Per-category edit, bulk delete |
+| Fuzzy search file preview | ❌ | ✅ Inline scroll + editor picker |
 | Fuzzy search across all sources | ❌ | ✅ `Ctrl+R` |
 | Multi-select for bulk operations | ❌ | ✅ `Space` + `a` |
 | Persistent browser (no exit on Enter) | ❌ | ✅ Navigate without leaving ls |
