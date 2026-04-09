@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { HistoryEntry } from "./historyManager";
 import { getAllAliases } from "./aliases";
+import { moveToTrash } from "./trash"
 
 type ResultKind = "history" | "file" | "dir" | "executable" | "builtin" | "alias";
 interface SearchResult { kind: ResultKind; value: string; display: string; sub: string; fullPath: string; }
@@ -212,7 +213,11 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
   function showDirAction(result: SearchResult): void {
     const full = result.fullPath;
-    const actionNav: NavItem[] = [{ key: "Ent/C", label: "cd into" }, { key: "Esc", label: "Back" }];
+    const actionNav: NavItem[] = [
+      { key: "Ent", label: "cd into" },
+      { key: "D", label: "Delete" },
+      { key: "Esc", label: "Back" }
+    ];
     function drawAction(): void {
       const nr = 3; const start = nr + 2; const avail = R() - nr - 2;
       drawNavbar([actionNav]); let out = ""; let ln = 0;
@@ -232,13 +237,30 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     const onAR = () => { clearScreen(); drawAction(); };
     process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onAR); stdin.removeListener("data", onKey);
     function onActionKey(k: string): void {
-      if (k === "\u001b" || k === "\u0003") { }
-      if (k === "\r" || k === "c" || k === "C") {
+      if (k === "\u001b") {
+        stdin.removeListener("data", onActionKey);
+        process.stdout.removeListener("resize", onAR);
+        clearScreen();
+        render();
+        stdin.on("data", onKey);
+        return;
+      }
+
+      if (k === "\u0003") { cleanup(); setTimeout(onCancel, 20); return; }
+
+      if (k === "\r") {
         stdin.removeListener("data", onActionKey);
         process.stdout.removeListener("resize", onAR);
         try { process.chdir(full); } catch { }
         cleanup();
         setTimeout(() => onSelect(""), 20);
+      }
+
+      if (k.toLowerCase() === "d") {
+        stdin.removeListener("data", onActionKey);
+        process.stdout.removeListener("resize", onAR);
+        showDeleteConfirm(result);
+        return;
       }
     }
     stdin.on("data", onActionKey); clearScreen(); drawAction();
@@ -253,7 +275,8 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
 
     const fileNav: NavItem[] = [
       { key: "Up/Dn", label: "Scroll" },
-      { key: "Ent", label: "Choose Editor" },
+      { key: "Ent", label: "Open Editor" },
+      { key: "D", label: "Delete" },
       { key: "Esc", label: "Back" }
     ];
 
@@ -328,6 +351,12 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     function onFileKey(k: string): void {
       if (k === "\u001b" || k === "\u0003") {
         if (inEditorPicker) { inEditorPicker = false; drawFileAction(); return; }
+        if (k.toLowerCase() === "d") {
+          stdin.removeListener("data", onFileKey);
+          process.stdout.removeListener("resize", onFR);
+          showDeleteConfirm(result);
+          return;
+        }
         previewScroll = 0;
         stdin.removeListener("data", onFileKey);
         process.stdout.removeListener("resize", onFR);
@@ -375,6 +404,56 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
       }
     }
     stdin.on("data", onFileKey); onFR();
+  }
+
+  function showDeleteConfirm(result: SearchResult): void {
+    const full = result.fullPath;
+    const confirmNav: NavItem[] = [
+      { key: "Y", label: "Move to Trash", color: "yellow" },
+      { key: "N/Esc", label: "Cancel", color: "green" }
+    ];
+
+    function drawConfirm(): void {
+      drawNavbar([confirmNav]);
+      let out = at(3, 1) + clr() + chalk.bold.red("  Move to Trash?");
+      out += at(4, 1) + clr() + chalk.white(`  Are you sure you want to delete: `) + chalk.cyan(result.display);
+      out += at(5, 1) + clr() + chalk.dim(`  Path: ${result.sub}`);
+      w(out);
+      drawBottomBar("Confirm Delete", "");
+    }
+
+    const onDR = () => { clearScreen(); drawConfirm(); };
+    process.stdout.removeListener("resize", onResize);
+    process.stdout.on("resize", onDR);
+    stdin.removeListener("data", onKey);
+
+    function onConfirmKey(k: string): void {
+      const closeConfirm = () => {
+        stdin.removeListener("data", onConfirmKey);
+        process.stdout.removeListener("resize", onDR);
+        process.stdout.on("resize", onResize);
+        clearScreen();
+        runSearch();
+        render();
+        stdin.on("data", onKey);
+      };
+
+      if (k.toLowerCase() === "y") {
+        try {
+          moveToTrash(full);
+          closeConfirm();
+        } catch (e) {
+          w(at(R(), 1) + clr() + chalk.red(" Error: " + (e as Error).message));
+          setTimeout(closeConfirm, 1000);
+        }
+      } else if (k === "\u001b" || k.toLowerCase() === "n" || k === "\u0003") {
+        closeConfirm();
+      }
+    }
+
+    stdin.on("data", onConfirmKey);
+    clearScreen();
+    drawConfirm();
   }
 
   function navigate(key: string): boolean {
