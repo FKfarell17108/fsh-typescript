@@ -1,4 +1,4 @@
-# FSH (FK Shell) v2.1.2
+# FSH (FK Shell) v2.1.3
 
 > A custom Unix shell, developed using TypeScript, and designed specifically for FK Universe to deliver a unique terminal experience.
 
@@ -13,6 +13,19 @@
 ---
 
 ## Changelog
+
+### v2.1.3 - Patch
+
+#### Trash Integration in Fuzzy Search
+- **Dedicated Delete Action** - Files and directories can now be moved to trash directly from the action panels in `search` / `Ctrl+R`
+- **`D` key in Detail View** - Pressing `D` while viewing a file preview or directory listing inside search opens a confirmation dialog to move the item to trash
+- **Auto-Refresh Search** - After a successful delete operation, the search results are automatically refreshed and the deleted item is removed from the list
+- **Refined Directory Navigation**:
+  - **`Esc`** in directory action panel now correctly returns to the main search results instead of closing the search
+  - **`Enter`** is now the primary and consistent key for `cd into` navigation
+  - Navigation labels updated in the navbar for better clarity (`cd into` vs `Back`)
+
+---
 
 ### v2.1.2 - Patch
 
@@ -451,7 +464,11 @@ Full-screen search across all sources simultaneously.
 | Type | Filter results in real time |
 | `↑↓` | Navigate results |
 | `Enter` on command | Use command |
-| `Enter` on directory | Preview folder contents, then `cd` into it |
+| Enter on directory | Preview folder contents |
+| Enter (in dir preview) | `cd` into directory |
+| D (in detail view) | Move item to trash (with confirmation) |
+| Esc (in detail view) | Back to search results |
+| Esc (in search) | Cancel and exit search |
 | `Enter` on file | Open inline file preview with scroll |
 | `↑↓` / `PgUp/PgDn` | Scroll file preview content |
 | `Enter` in file preview | Open editor picker |
@@ -551,7 +568,7 @@ The bottom bar left side now includes the **git status indicator** for the folde
 |---|---|---|
 | Interactive file browser | ❌ | ✅ Grid with colors |
 | Tab completion UI | Basic list | ✅ Visual picker |
-| Delete to trash from ls | ❌ | ✅ With preview |
+| Delete to trash | ❌ | ✅ From ls, dir, and search |
 | Git info in prompt | Plugin needed | ✅ Built-in |
 | Git status in file browser | ❌ | ✅ Per-file badges + bottom bar |
 | File preview panel | ❌ | ✅ Split + overlay, with browse mode |
