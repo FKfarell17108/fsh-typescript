@@ -349,18 +349,27 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     stdin.removeListener("data", onKey);
 
     function onFileKey(k: string): void {
+      // 1. Cek tombol Delete (D) terlebih dahulu secara mandiri
+      if (!inEditorPicker && k.toLowerCase() === "d") {
+        stdin.removeListener("data", onFileKey);
+        process.stdout.removeListener("resize", onFR);
+        showDeleteConfirm(result);
+        return;
+      }
+
+      // 2. Cek tombol Keluar (Esc/Ctrl+C)
       if (k === "\u001b" || k === "\u0003") {
-        if (inEditorPicker) { inEditorPicker = false; drawFileAction(); return; }
-        if (k.toLowerCase() === "d") {
-          stdin.removeListener("data", onFileKey);
-          process.stdout.removeListener("resize", onFR);
-          showDeleteConfirm(result);
+        if (inEditorPicker) {
+          inEditorPicker = false;
+          drawFileAction();
           return;
         }
         previewScroll = 0;
         stdin.removeListener("data", onFileKey);
         process.stdout.removeListener("resize", onFR);
-        clearScreen(); render(); stdin.on("data", onKey);
+        clearScreen();
+        render();
+        stdin.on("data", onKey);
         return;
       }
 
