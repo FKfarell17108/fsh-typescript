@@ -349,15 +349,12 @@ export function showSearch(historyEntries: HistoryEntry[], onSelect: (value: str
     stdin.removeListener("data", onKey);
 
     function onFileKey(k: string): void {
-      // 1. Cek tombol Delete (D) terlebih dahulu secara mandiri
       if (!inEditorPicker && k.toLowerCase() === "d") {
         stdin.removeListener("data", onFileKey);
         process.stdout.removeListener("resize", onFR);
         showDeleteConfirm(result);
         return;
       }
-
-      // 2. Cek tombol Keluar (Esc/Ctrl+C)
       if (k === "\u001b" || k === "\u0003") {
         if (inEditorPicker) {
           inEditorPicker = false;
