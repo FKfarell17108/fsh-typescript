@@ -154,9 +154,7 @@ export function printNeofetch() {
     `  ${sep}`,
     `  ${label("OS")} ${w(getOS())}`,
     `  ${label("Kernel")} ${w(getKernel())}`,
-    `  ${label("CPU")} ${w(getCPU())}`,
     `  ${label("Shell")} ${w(getShellVersion())}`,
-    `  ${label("IP")} ${w(getIP())}`,
     `  ${sep}`,
     `  ${g("by Farell Kurniawan · github.com/FKfarell17108")}`,
   ];
