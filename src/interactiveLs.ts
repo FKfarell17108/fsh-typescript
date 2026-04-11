@@ -277,7 +277,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         { key: "Nav", label: "Navigate" },
         { key: "Ent", label: entLabelBrowse },
         { key: "Tab", label: "Parent" },
-        { key: "Esc", label: fehOpen ? "Close Preview" : "Back to List" },
+        { key: "Esc", label: "Back" },
       ]];
     }
     if (moveModePending) {
@@ -859,8 +859,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (fehOpen) {
           closeImagePreview();
           fehOpen = false;
-          drawNavbar(NAV());
-          drawBottom();
+          exitBrowse();
           return;
         }
         exitBrowse();
