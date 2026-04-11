@@ -353,9 +353,9 @@ export function interactiveDir(onExit: () => void): void {
     let branchColor = chalk.green;
     const b = gs.branch.toLowerCase();
     if (b === "main" || b === "master") {
-      branchColor = chalk.hex("#FFD580"); // Gold
+      branchColor = chalk.hex("#FFD580");
     } else if (b === "dev" || b === "develop") {
-      branchColor = chalk.cyan; // Cyan
+      branchColor = chalk.cyan;
     }
     const repoPart = chalk.hex("#AEDD87")(`git: ${gs.repoName}`);
     const branchPart = chalk.white.bold(" (") + branchColor.bold(gs.branch) + chalk.white.bold(")");
@@ -487,10 +487,21 @@ export function interactiveDir(onExit: () => void): void {
   }
 
   function renderPreview(): void {
-    if (!pvState.content) return;
+    if (!entries.length) {
+      pvState.path = "";
+      pvState.content = null;
+      return;
+    }
+
+    const targetPath = path.join(cwd, entries[selIdx].name);
+    updatePreview(pvState, targetPath);
+
     const bIdx = browseMode ? browseIdx : undefined;
-    if (isSplit()) drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
-    else drawOverlayPreview(pvState, NR(), bIdx);
+    if (isSplit()) {
+      drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
+    } else {
+      drawOverlayPreview(pvState, NR(), bIdx);
+    }
   }
 
   function render(): void { drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom(); }

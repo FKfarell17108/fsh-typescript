@@ -583,10 +583,21 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function renderPreview(): void {
-    if (!pvState.content) return;
+    if (!entries.length) {
+      pvState.path = "";
+      pvState.content = null;
+      return;
+    }
+
+    const targetPath = path.join(currentDir, entries[selIdx].name);
+    updatePreview(pvState, targetPath);
+
     const bIdx = browseMode ? browseIdx : undefined;
-    if (isSplit()) drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
-    else drawOverlayPreview(pvState, NR(), bIdx);
+    if (isSplit()) {
+      drawSplitPreview(pvState, NR(), effectiveListW(), bIdx);
+    } else {
+      drawOverlayPreview(pvState, NR(), bIdx);
+    }
   }
 
   function render(): void { drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom(); }
