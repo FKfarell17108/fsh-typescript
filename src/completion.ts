@@ -13,11 +13,23 @@ const BUILTINS = [
 export function getCandidates(line: string): { candidates: string[]; partial: string } {
   const tokens = tokenizeLine(line);
   const isFirstWord = tokens.length === 0 || (tokens.length === 1 && !line.endsWith(" "));
+
   if (isFirstWord) {
     const partial = tokens[0] ?? "";
     return { candidates: getCommandCandidates(partial), partial };
   } else {
     const partial = line.endsWith(" ") ? "" : tokens[tokens.length - 1];
+
+    switch (tokens[0]) {
+      case "fshrc":
+        const fshrcSubs = ["init", "reload", "path"];
+        return { candidates: fshrcSubs.filter(s => s.startsWith(partial)), partial };
+
+      case "neofetch":
+        const neoSubs = ["on", "off", "preview"];
+        return { candidates: neoSubs.filter(s => s.startsWith(partial)), partial };
+    }
+
     const { candidates } = getFileCandidates(partial);
     return { candidates, partial };
   }
@@ -36,9 +48,9 @@ function getCommandCandidates(partial: string): string[] {
     try {
       for (const entry of fs.readdirSync(dir)) {
         if (!entry.startsWith(partial) || seen.has(entry)) continue;
-        try { fs.accessSync(path.join(dir, entry), fs.constants.X_OK); candidates.push(entry); seen.add(entry); } catch {}
+        try { fs.accessSync(path.join(dir, entry), fs.constants.X_OK); candidates.push(entry); seen.add(entry); } catch { }
       }
-    } catch {}
+    } catch { }
   }
   return candidates.sort();
 }
@@ -50,18 +62,18 @@ export function getFileCandidates(partial: string): { candidates: string[]; base
   } else if (partial.startsWith("~/")) {
     const home = process.env.HOME ?? "";
     const rest = partial.slice(2);
-    const ls   = rest.lastIndexOf("/");
-    dir    = ls === -1 ? home : path.join(home, rest.slice(0, ls));
+    const ls = rest.lastIndexOf("/");
+    dir = ls === -1 ? home : path.join(home, rest.slice(0, ls));
     prefix = ls === -1 ? rest : rest.slice(ls + 1);
   } else if (partial.includes("/")) {
     const ls = partial.lastIndexOf("/");
-    dir    = path.resolve(partial.slice(0, ls) || "/");
+    dir = path.resolve(partial.slice(0, ls) || "/");
     prefix = partial.slice(ls + 1);
   } else {
     dir = process.cwd(); prefix = partial;
   }
   let entries: fs.Dirent[] = [];
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch {}
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { }
   const candidates = entries
     .filter(e => e.name.startsWith(prefix))
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
@@ -69,7 +81,7 @@ export function getFileCandidates(partial: string): { candidates: string[]; base
       const name = e.name + (e.isDirectory() ? "/" : "");
       if (partial.startsWith("~/")) {
         const rest = partial.slice(2);
-        const ls   = rest.lastIndexOf("/");
+        const ls = rest.lastIndexOf("/");
         return (ls === -1 ? "~/" : "~/" + rest.slice(0, ls + 1)) + name;
       }
       if (partial.includes("/")) return partial.slice(0, partial.lastIndexOf("/") + 1) + name;
@@ -96,8 +108,8 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   function NAV(): NavItem[] {
     const items: NavItem[] = [
       { key: "Nav", label: "Navigate" },
-      { key: "Ent", label: "Select"   },
-      { key: "Esc", label: "Cancel"   },
+      { key: "Ent", label: "Select" },
+      { key: "Esc", label: "Cancel" },
     ];
     if (onHistory) items.push({ key: "Tab", label: "History" });
     return items;
@@ -110,7 +122,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
   function vis(): number { return Math.max(1, R() - NR - 2); }
   function adjustScroll(): void {
     const row = Math.floor(selIdx / pr()); const v = vis();
-    if (row < scrollTop)      scrollTop = row;
+    if (row < scrollTop) scrollTop = row;
     if (row >= scrollTop + v) scrollTop = row - v + 1;
   }
 
@@ -144,13 +156,13 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
       let line = " ";
       for (let col = 0; col < p; col++) {
         const i = fr * p + col; if (i >= candidates.length) break;
-        const name   = candidates[i];
+        const name = candidates[i];
         const padded = name.padEnd(c, " ");
-        const isSel  = i === selIdx;
-        const isDir  = name.endsWith("/");
-        if      (isSel)  line += chalk.bgWhite.black.bold(padded);
-        else if (isDir)  line += name.startsWith(".") ? chalk.cyan(padded) : chalk.blue.bold(padded);
-        else             line += name.startsWith(".") ? chalk.gray(padded) : chalk.white(padded);
+        const isSel = i === selIdx;
+        const isDir = name.endsWith("/");
+        if (isSel) line += chalk.bgWhite.black.bold(padded);
+        else if (isDir) line += name.startsWith(".") ? chalk.cyan(padded) : chalk.blue.bold(padded);
+        else line += name.startsWith(".") ? chalk.gray(padded) : chalk.white(padded);
       }
       out += line;
     }
@@ -172,7 +184,7 @@ export function showPicker(candidates: string[], onSelect: (chosen: string) => v
     if (key === "\t" && onHistory) { cleanup(); setTimeout(onHistory, 20); return; }
     if (key === "\r") { exit(candidates[selIdx]); return; }
     let idx = selIdx;
-    if      (key === "\u001b[A") idx -= p;
+    if (key === "\u001b[A") idx -= p;
     else if (key === "\u001b[B") idx += p;
     else if (key === "\u001b[C") idx += 1;
     else if (key === "\u001b[D") idx -= 1;

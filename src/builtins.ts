@@ -14,6 +14,7 @@ import { loadBookmarks } from "./bookmarks";
 import { showSearch } from "./search";
 import { loadHistoryEntries } from "./historyManager";
 import { showHelps } from "./helps";
+import { spawn } from "child_process";
 
 const builtins = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
@@ -53,7 +54,7 @@ export function handleBuiltin(
       showBookmarkPicker(
         process.cwd(),
         (dir) => {
-          try { process.chdir(dir); } catch {}
+          try { process.chdir(dir); } catch { }
           resumeInput();
         },
         () => resumeInput()
@@ -70,8 +71,7 @@ export function handleBuiltin(
       return true;
 
     case "fshrc":
-      handleFshrc(args);
-      done();
+      handleFshrc(args, done);
       return true;
 
     case "clear": {
@@ -160,7 +160,7 @@ function handleAlias(args: string[]) {
       }
     } else {
       const name = arg.slice(0, eq).trim();
-      let value  = arg.slice(eq + 1).trim();
+      let value = arg.slice(eq + 1).trim();
       if (
         (value.startsWith("'") && value.endsWith("'")) ||
         (value.startsWith('"') && value.endsWith('"'))
@@ -231,48 +231,110 @@ function handleType(args: string[]) {
   console.log(`${target}: not found`);
 }
 
-function handleFshrc(args: string[]) {
+async function handleFshrc(args: string[], done: () => void) {
   const FSHRC = path.join(process.env.HOME ?? "~", ".fshrc");
-  const sub   = args[0];
+  const sub = args[0];
 
-  if (sub === "init") {
-    if (fs.existsSync(FSHRC)) {
-      console.log(`~/.fshrc already exists. Use 'fshrc reload' to reload it.`);
-      return;
-    }
-    fs.writeFileSync(FSHRC, generateDefaultFshrc(), "utf8");
-    console.log(`Created ~/.fshrc — edit it and run 'fshrc reload' to apply.`);
+  if (!sub || !["init", "reload", "path"].includes(sub)) {
+    console.log(chalk.bold("\n FSH Configuration Manager"));
+    console.log(chalk.gray(" usage: fshrc <command>\n"));
+    console.log(` ${chalk.cyan("init")}    ${chalk.white("Generate a default .fshrc file")}`);
+    console.log(` ${chalk.cyan("reload")}  ${chalk.white("Refresh shell configurations")}`);
+    console.log(` ${chalk.cyan("path")}    ${chalk.white("Show the location of your .fshrc")}\n`);
+    done();
     return;
   }
 
-  if (sub === "reload" || !sub) {
-    loadFshrc();
-    console.log(chalk.green("✓") + chalk.white(" fsh reloaded"));
+  if (sub === "init") {
+    if (fs.existsSync(FSHRC)) {
+      console.log(chalk.red(`~/.fshrc already exists. Run 'fshrc reload' to apply changes.`));
+    } else {
+      fs.writeFileSync(FSHRC, generateDefaultFshrc(), "utf8");
+      console.log(chalk.green("✓") + ` Created ~/.fshrc successfully.`);
+    }
+    done();
+    return;
+  }
+
+  if (sub === "reload") {
+    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let i = 0;
+
+    process.stdout.write("\x1B[?25l");
+
+    const loader = setInterval(() => {
+      process.stdout.write(`\r${chalk.cyan(frames[i])} status: refreshing shell system...`);
+      i = (i + 1) % frames.length;
+    }, 80);
+
+    setTimeout(() => {
+      clearInterval(loader);
+
+      const oldMain = require("./main");
+      oldMain.pauseInput();
+
+      Object.keys(require.cache).forEach((key) => {
+        if (key.includes("/src/") || key.includes("/dist/")) {
+          delete require.cache[key];
+        }
+      });
+
+      process.stdout.write("\r\x1b[K");
+      console.log(`status: ${chalk.green("fsh reloaded")}`);
+      process.stdout.write("\x1B[?25h");
+
+      const freshMain = require("./main");
+
+      const { loadFshrc } = require("./fshrc");
+      const { loadBookmarks } = require("./bookmarks");
+      const { loadLog } = require("./fileOps");
+      const { loadGeneralHistory } = require("./generalHistory");
+
+      loadFshrc();
+      loadBookmarks();
+      loadLog();
+      loadGeneralHistory();
+
+      freshMain.startPrompt();
+
+    }, 1200);
+
     return;
   }
 
   if (sub === "path") {
     console.log(FSHRC);
+    done();
     return;
   }
-
-  console.log(`usage: fshrc [init|reload|path]`);
 }
 
 function handleNeofetch(args: string[]) {
   const sub = args[0];
 
+  if (!sub || !["on", "off", "preview"].includes(sub)) {
+    console.log(chalk.bold("\n Neofetch Manager"));
+    console.log(chalk.gray(" usage: neofetch <command>\n"));
+    console.log(` ${chalk.cyan("preview")}  ${chalk.white("Show neofetch")}`);
+    console.log(` ${chalk.cyan("on")}       ${chalk.white("Enable neofetch to show on every startup")}`);
+    console.log(` ${chalk.cyan("off")}      ${chalk.white("Disable neofetch on startup")}\n`);
+    return;
+  }
+
   if (sub === "on") {
     setNeofetchState("on");
-    console.log(chalk.green("✓") + chalk.white(" neofetch enabled — will show on every startup"));
+    console.log(`status: ${chalk.green("neofetch on")}`);
     return;
   }
 
   if (sub === "off") {
     setNeofetchState("off");
-    console.log(chalk.gray("✗ neofetch disabled"));
+    console.log(`status: ${chalk.red("neofetch off")}`);
     return;
   }
 
-  printNeofetch();
+  if (sub === "preview") {
+    printNeofetch();
+    return;
+  }
 }

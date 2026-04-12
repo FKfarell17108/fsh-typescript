@@ -22,22 +22,22 @@ import { loadBookmarks } from "./bookmarks";
 import { showBookmarkPicker } from "./bookmarkPicker";
 import { closeImagePreview } from "./preview";
 
-loadFshrc();
-loadLog();
-loadGeneralHistory();
-loadBookmarks();
+// loadFshrc();
+// loadLog();
+// loadGeneralHistory();
+// loadBookmarks();
 
-if (isNeofetchEnabled()) printNeofetch();
+// if (isNeofetchEnabled()) printNeofetch();
 
 process.on("exit", () => { closeImagePreview(); });
 process.on("SIGINT", () => { closeImagePreview(); process.exit(130); });
 
 let rl: readline.Interface;
 let historyEntries: HistoryEntry[] = loadHistoryEntries();
-let savedHistory: string[]         = entriesToStrings(historyEntries);
-let tabHandlerActive               = false;
-let lastExitCodeForPrompt          = 0;
-let inputPaused                    = false;
+let savedHistory: string[] = entriesToStrings(historyEntries);
+let tabHandlerActive = false;
+let lastExitCodeForPrompt = 0;
+let inputPaused = false;
 
 let _absorbSigint = false;
 export function setAbsorbSigint(v: boolean) { _absorbSigint = v; }
@@ -49,11 +49,11 @@ process.on("SIGINT", () => {
 export function isInputPaused(): boolean { return inputPaused; }
 
 export function getPrompt(): string {
-  const cwd     = process.cwd();
-  const folder  = path.basename(cwd) || "/";
+  const cwd = process.cwd();
+  const folder = path.basename(cwd) || "/";
   const gitInfo = getGitInfo();
-  const git     = gitInfo ? " " + formatGitPrompt(gitInfo) : "";
-  const arrow   = lastExitCodeForPrompt !== 0 ? chalk.red(" > ") : " > ";
+  const git = gitInfo ? " " + formatGitPrompt(gitInfo) : "";
+  const arrow = lastExitCodeForPrompt !== 0 ? chalk.red(" > ") : " > ";
   return `fsh/${chalk.blue(folder)}${git}${arrow}`;
 }
 
@@ -62,7 +62,7 @@ export function setLastExitCode(code: number) {
 }
 
 export function pauseInput() {
-  inputPaused   = true;
+  inputPaused = true;
   _absorbSigint = true;
   process.stdout.removeAllListeners("resize");
   if (rl) {
@@ -72,13 +72,13 @@ export function pauseInput() {
     (rl as any) = null;
   }
   tabHandlerActive = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
 }
 
 export function resumeInput() {
-  inputPaused   = false;
+  inputPaused = false;
   _absorbSigint = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
   setTimeout(() => { createRl(); prompt(); }, 50);
 }
 
@@ -92,20 +92,20 @@ export function pauseInputForExternal() {
     (rl as any) = null;
   }
   tabHandlerActive = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
 }
 
 export function resumeInputThen(cb: () => void) {
-  inputPaused   = false;
+  inputPaused = false;
   _absorbSigint = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
   setTimeout(() => { createRl(); cb(); }, 50);
 }
 
 export function resumeInputAndExecute(cmdLine: string) {
-  inputPaused   = false;
+  inputPaused = false;
   _absorbSigint = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
   setTimeout(() => {
     createRl();
     const statement = parseInput(cmdLine);
@@ -115,7 +115,7 @@ export function resumeInputAndExecute(cmdLine: string) {
 
 export function reloadHistoryInRl(updated: HistoryEntry[]) {
   historyEntries = updated;
-  savedHistory   = entriesToStrings(updated);
+  savedHistory = entriesToStrings(updated);
   saveHistoryEntries(updated);
   if (rl) (rl as any).history = savedHistory.slice();
 }
@@ -137,7 +137,7 @@ function ansiCursorPos(highlighted: string, rawCursor: number): number {
 }
 
 function setupTabIntercept() {
-  const rlAny    = rl as any;
+  const rlAny = rl as any;
   const original = rlAny._ttyWrite?.bind(rl);
   if (!original) return;
 
@@ -199,15 +199,15 @@ function setupTabIntercept() {
   const origRefresh = rlAny._refreshLine?.bind(rl);
   if (origRefresh) {
     rlAny._refreshLine = function () {
-      const rawLine: string   = rlAny.line   ?? "";
-      const rawCursor: number = rlAny.cursor  ?? 0;
+      const rawLine: string = rlAny.line ?? "";
+      const rawCursor: number = rlAny.cursor ?? 0;
       if (rawLine.length === 0) return origRefresh();
-      const highlighted       = highlight(rawLine);
+      const highlighted = highlight(rawLine);
       const cursorInHighlight = ansiCursorPos(highlighted, rawCursor);
-      rlAny.line   = highlighted;
+      rlAny.line = highlighted;
       rlAny.cursor = cursorInHighlight;
       origRefresh();
-      rlAny.line   = rawLine;
+      rlAny.line = rawLine;
       rlAny.cursor = rawCursor;
     };
   }
@@ -225,7 +225,7 @@ function openBookmarkPicker() {
   showBookmarkPicker(
     process.cwd(),
     (dir) => {
-      try { process.chdir(dir); } catch {}
+      try { process.chdir(dir); } catch { }
       resumeInput();
     },
     () => resumeInput()
@@ -237,7 +237,7 @@ function openCommandHistoryPicker() {
   pauseInput();
   showHistoryManager(historyEntries, (result: HistoryResult) => {
     historyEntries = result.entries;
-    savedHistory   = entriesToStrings(result.entries);
+    savedHistory = entriesToStrings(result.entries);
     saveHistoryEntries(result.entries);
     if (result.kind === "selected") {
       resumeInputWithLine(result.cmd);
@@ -270,7 +270,7 @@ function openCompletionPicker(candidates: string[], line: string, partial: strin
         pauseInput();
         showHistoryManager(historyEntries, (result: HistoryResult) => {
           historyEntries = result.entries;
-          savedHistory   = entriesToStrings(result.entries);
+          savedHistory = entriesToStrings(result.entries);
           saveHistoryEntries(result.entries);
           if (result.kind === "selected") {
             resumeInputWithLine(result.cmd);
@@ -284,9 +284,9 @@ function openCompletionPicker(candidates: string[], line: string, partial: strin
 }
 
 export function resumeInputWithLine(restoreLine: string) {
-  inputPaused   = false;
+  inputPaused = false;
   _absorbSigint = false;
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
   setTimeout(() => { createRl(); promptWithLine(restoreLine); }, 50);
 }
 
@@ -296,10 +296,10 @@ function createRl() {
       savedHistory = (rl as any).history?.slice() ?? [];
       saveHistoryEntries(historyEntries);
       rl.close();
-    } catch {}
+    } catch { }
     (rl as any) = null;
   }
-  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch {}
+  try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch { }
   process.stdin.setEncoding("utf8");
   process.stdin.resume();
   rl = readline.createInterface({
@@ -317,8 +317,8 @@ function createRl() {
 }
 
 function setLine(newLine: string) {
-  const rlAny  = rl as any;
-  rlAny.line   = newLine;
+  const rlAny = rl as any;
+  rlAny.line = newLine;
   rlAny.cursor = newLine.length;
   rlAny._refreshLine?.();
 }
@@ -333,10 +333,10 @@ function prompt() {
     if (!cleanInput) return prompt();
     const rawInput = stripAnsi(cleanInput);
     historyEntries = pushEntry(historyEntries, rawInput);
-    savedHistory   = entriesToStrings(historyEntries);
+    savedHistory = entriesToStrings(historyEntries);
     saveHistoryEntries(historyEntries);
     logEvent("command", rawInput, "");
-    const expanded  = expandAliases(rawInput);
+    const expanded = expandAliases(rawInput);
     const statement = parseInput(expanded);
     execute(statement, () => { setLastExitCode(getLastExitCode()); prompt(); });
   });
@@ -350,14 +350,25 @@ function promptWithLine(prefill: string) {
     if (!cleanInput) return prompt();
     const rawInput = stripAnsi(cleanInput);
     historyEntries = pushEntry(historyEntries, rawInput);
-    savedHistory   = entriesToStrings(historyEntries);
+    savedHistory = entriesToStrings(historyEntries);
     saveHistoryEntries(historyEntries);
     logEvent("command", rawInput, "");
-    const expanded  = expandAliases(rawInput);
+    const expanded = expandAliases(rawInput);
     const statement = parseInput(expanded);
     execute(statement, () => { setLastExitCode(getLastExitCode()); prompt(); });
   });
   if (prefill) setTimeout(() => setLine(prefill), 10);
 }
 
-startPrompt();
+if (require.main === module) {
+  loadFshrc();
+  loadLog();
+  loadGeneralHistory();
+  loadBookmarks();
+
+  if (isNeofetchEnabled()) {
+    printNeofetch();
+  }
+
+  startPrompt();
+}
