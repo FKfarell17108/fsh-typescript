@@ -22,7 +22,7 @@ export function getCandidates(line: string): { candidates: string[]; partial: st
 
     switch (tokens[0]) {
       case "fshrc":
-        const fshrcSubs = ["init", "reload", "path"];
+        const fshrcSubs = ["init", "reload", "path", "version"];
         return { candidates: fshrcSubs.filter(s => s.startsWith(partial)), partial };
 
       case "neofetch":

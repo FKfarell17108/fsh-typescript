@@ -235,12 +235,15 @@ async function handleFshrc(args: string[], done: () => void) {
   const FSHRC = path.join(process.env.HOME ?? "~", ".fshrc");
   const sub = args[0];
 
-  if (!sub || !["init", "reload", "path"].includes(sub)) {
+  const validSubs = ["init", "reload", "path", "version"];
+
+  if (!sub || !validSubs.includes(sub)) {
     console.log(chalk.bold("\n FSH Configuration Manager"));
     console.log(chalk.gray(" usage: fshrc <command>\n"));
-    console.log(` ${chalk.cyan("init")}    ${chalk.white("Generate a default .fshrc file")}`);
-    console.log(` ${chalk.cyan("reload")}  ${chalk.white("Refresh shell configurations")}`);
-    console.log(` ${chalk.cyan("path")}    ${chalk.white("Show the location of your .fshrc")}\n`);
+    console.log(` ${chalk.cyan("init")}     ${chalk.white("Generate a default .fshrc file")}`);
+    console.log(` ${chalk.cyan("reload")}   ${chalk.white("Refresh shell configurations")}`);
+    console.log(` ${chalk.cyan("path")}     ${chalk.white("Show the location of your .fshrc")}`);
+    console.log(` ${chalk.cyan("version")}  ${chalk.white("Show current fsh version")}\n`);
     done();
     return;
   }
@@ -296,7 +299,6 @@ async function handleFshrc(args: string[], done: () => void) {
       loadGeneralHistory();
 
       freshMain.startPrompt();
-
     }, 1200);
 
     return;
@@ -304,6 +306,18 @@ async function handleFshrc(args: string[], done: () => void) {
 
   if (sub === "path") {
     console.log(FSHRC);
+    done();
+    return;
+  }
+
+  if (sub === "version") {
+    try {
+      const pkgPath = path.join(__dirname, "..", "package.json");
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      console.log(`fsh v${pkg.version}`);
+    } catch (e) {
+      console.log(`status: ${chalk.red("fsh version not detected")}`);
+    }
     done();
     return;
   }
