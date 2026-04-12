@@ -131,6 +131,10 @@ export function handleBuiltin(
       done();
       return true;
 
+    case "fsh":
+      handleFsh(done);
+      return true;
+
     default:
       return false;
   }
@@ -351,4 +355,26 @@ function handleNeofetch(args: string[]) {
     printNeofetch();
     return;
   }
+}
+
+function handleFsh(done: () => void) {
+  const pkgPath = path.join(__dirname, "..", "package.json");
+  let version = "2.1.3";
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    version = pkg.version;
+  } catch (e) { }
+
+  console.log(chalk.bold("\n FSH (FK Shell)"));
+  console.log(chalk.gray(" The core terminal of FK Universe\n"));
+
+  console.log(` ${chalk.cyan("Description")}  ${chalk.white("A custom full-stack terminal for productivity and innovation")}`);
+  console.log(` ${chalk.cyan("Purpose")}      ${chalk.white("Creating technology-based solutions for society")}`);
+  console.log(` ${chalk.cyan("Framework")}    ${chalk.white("Built with TypeScript, Node.js, and Unix principles")}`);
+  console.log(` ${chalk.cyan("Developer")}    ${chalk.white("Farell Kurniawan")}`);
+  console.log(` ${chalk.cyan("Version")}      ${chalk.white("v" + version)}\n`);
+
+  console.log(chalk.gray(" Type 'helps' to see available commands or 'fshrc' for config.\n"));
+
+  done();
 }

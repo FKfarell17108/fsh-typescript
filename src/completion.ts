@@ -6,7 +6,7 @@ import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt
 
 const BUILTINS = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
-  "alias", "unalias", "clear", "history", "trash", "fshrc", "neofetch",
+  "alias", "unalias", "clear", "history", "trash", "fsh", "fshrc", "neofetch",
   "bookmarks", "search", "helps",
 ];
 
