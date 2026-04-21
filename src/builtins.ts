@@ -18,7 +18,7 @@ import { spawn } from "child_process";
 
 const builtins = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
-  "alias", "unalias", "clear", "history", "fshrc", "trash", "neofetch",
+  "alias", "unalias", "clear", "cls", "history", "fshrc", "trash", "neofetch",
   "bookmarks", "search", "helps",
 ];
 
@@ -74,7 +74,8 @@ export function handleBuiltin(
       handleFshrc(args, done);
       return true;
 
-    case "clear": {
+    case "clear":
+    case "cls": {
       const rows = process.stdout.rows || 24;
       process.stdout.write("\n".repeat(rows) + "\x1b[3J\x1b[2J\x1b[H");
       done();

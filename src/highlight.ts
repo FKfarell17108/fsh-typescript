@@ -5,7 +5,7 @@ import { getAllAliases } from "./aliases";
 
 const BUILTINS = new Set([
   "exit", "echo", "type", "pwd", "cd", "ls", "dir", "alias", "unalias",
-  "clear", "history", "trash", "fshrc", "neofetch",
+  "clear", "cls", "history", "trash", "fshrc", "neofetch",
   "bookmarks", "search", "helps",
 ]);
 
