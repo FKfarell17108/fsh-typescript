@@ -231,23 +231,42 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     return sortLsEntriesWithStat(base, currentSort, currentDir);
   }
 
-  function reload(keepName?: string): void {
+  function reload(keepName?: string, resetIdx = true): void {
     loadAll();
     if (searchQuery) {
       entries = runSearch(searchQuery);
     } else {
       entries = visible();
-      if (!entries.length && allEntries.length) { showHidden = true; entries = visible(); }
+      if (!entries.length && allEntries.length) {
+        showHidden = true;
+        entries = visible();
+      }
     }
+
     selected = new Set(Array.from(selected).filter(n => entries.some(e => e.name === n)));
-    selIdx = 0; scrollTop = 0;
-    if (keepName) { const idx = entries.findIndex(e => e.name === keepName); if (idx >= 0) selIdx = idx; }
-    adjustScroll(); refreshPreview();
+
+    if (resetIdx && !keepName) {
+      selIdx = 0;
+      scrollTop = 0;
+    }
+
+    if (keepName) {
+      const idx = entries.findIndex(e => e.name === keepName);
+      if (idx >= 0) {
+        selIdx = idx;
+      } else if (resetIdx) {
+        selIdx = 0;
+        scrollTop = 0;
+      }
+    }
+
+    adjustScroll();
+    refreshPreview();
   }
 
   function refreshPreview(): void {
     if (!entries.length) { pvState.path = ""; pvState.content = null; return; }
-    updatePreview(pvState, path.join(currentDir, entries[selIdx].name));
+    forceUpdatePreview(pvState, path.join(currentDir, entries[selIdx].name));
   }
 
   function togglePreviewPref(): void {
@@ -361,10 +380,11 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         drawBottom();
         return;
       }
-      browseMode = false; browseIdx = 0; browseStack = []; pvState.scrollTop = 0;
-      currentDir = path.dirname(resolvedFull); process.chdir(currentDir);
-      reload(); clearScreen();
-      showEditorPicker(resolvedFull, (ed, f) => { currentDir = path.dirname(f); process.chdir(currentDir); onOpenFile(ed, f); });
+      showEditorPicker(resolvedFull, (ed, f) => {
+        browseMode = false; browseIdx = 0; browseStack = []; pvState.scrollTop = 0;
+        currentDir = path.dirname(f); process.chdir(currentDir);
+        onOpenFile(ed, f);
+      });
     }
   }
 
@@ -420,6 +440,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     const parent = path.dirname(currentDir); if (parent === currentDir) return;
     const prev = path.basename(currentDir); currentDir = parent; process.chdir(currentDir);
     selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
+    pvState.path = "";
+    pvState.content = null;
     reload(prev); fullRedraw();
   }
 
@@ -589,8 +611,10 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       return;
     }
 
-    const targetPath = path.join(currentDir, entries[selIdx].name);
-    updatePreview(pvState, targetPath);
+    if (!browseMode) {
+      const targetPath = path.join(currentDir, entries[selIdx].name);
+      updatePreview(pvState, targetPath);
+    }
 
     const bIdx = browseMode ? browseIdx : undefined;
     if (isSplit()) {
@@ -742,37 +766,118 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function showEditorPicker(filePath: string, openFileCb?: (editor: string, file: string) => void): void {
     const cb = openFileCb ?? onOpenFile;
-    const editors = getInstalledEditors(); if (!editors.length) { showStatus("  no editors found", true); return; }
-    if (editors.length === 1) { cb(editors[0], filePath); return; }
-    const EW = Math.max(...editors.map(e => e.length)) + 2; let eSel = 0;
-    const editorNav: NavItem[] = [{ key: "Nav", label: "Navigate" }, { key: "Ent", label: "Open" }, { key: "Esc", label: "Back" }];
-    function drawEditor(): void {
-      drawNavbar([editorNav]);
-      let out = at(3, 1) + "\x1b[2K" + " " + chalk.dim("choose editor:");
-      let line = " ";
+    const editors = getInstalledEditors();
+
+    if (!editors.length) {
+      showStatus("  no editors found", true);
+      return;
+    }
+
+    if (editors.length === 1) {
+      cb(editors[0], filePath);
+      return;
+    }
+
+    let eSel = 0;
+    const EW = Math.max(...editors.map(e => e.length)) + 4;
+
+    function drawEditorPopup(): void {
+      render();
+
+      const cols = C();
+      const rows = R();
+
+      const popupW = Math.min(cols - 10, Math.max(50, editors.length * (EW + 1)));
+      const popupH = 7;
+
+      const startY = Math.floor((rows - popupH) / 2);
+      const startX = Math.floor((cols - popupW) / 2);
+
+      const borderCol = chalk.gray;
+      const bgSpace = " ".repeat(popupW - 2);
+
+      w(at(startY, startX) + borderCol("┏" + "━".repeat(popupW - 2) + "┓"));
+      w(at(startY + 1, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + 2, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + 3, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + 4, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + 5, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + 6, startX) + borderCol("┗" + "━".repeat(popupW - 2) + "┛"));
+
+      const header = " CHOOSE EDITOR ";
+      w(
+        at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) +
+        chalk.bold.white(header)
+      );
+
+      w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
+
+      let editorLine = "";
       for (let i = 0; i < editors.length; i++) {
-        const name = " " + editors[i] + " ";
-        const paddedName = name.padEnd(EW + 2, " ");
-        line += i === eSel
-          ? chalk.bgWhite.black.bold(paddedName)
-          : chalk.cyan(paddedName);
+        const name = `  ${editors[i]}  `;
+        if (i === eSel) {
+          editorLine += chalk.bgWhite.black.bold(name) + " ";
+        } else {
+          editorLine += chalk.cyan(name) + " ";
+        }
       }
-      out += at(4, 1) + "\x1b[2K" + line;
-      w(out);
-      drawBottomBar(path.basename(filePath), "");
+
+      const lineX = startX + Math.floor((popupW - visibleLen(editorLine)) / 2);
+      w(at(startY + 3, lineX) + editorLine);
+
+      const fileLabel = `File: ${path.basename(filePath)}`;
+      w(
+        at(startY + 5, startX + Math.floor((popupW - fileLabel.length) / 2)) +
+        chalk.dim(fileLabel)
+      );
     }
-    const onER = () => { clearScreen(); drawEditor(); };
-    process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onER); stdin.removeListener("data", onKey);
+
+    const onER = () => {
+      drawEditorPopup();
+    };
+
+    process.stdout.removeListener("resize", onResize);
+    process.stdout.on("resize", onER);
+
+    stdin.removeListener("data", onKey);
+
     function onEditorKey(k: string): void {
-      if (k === "\u0003") { stdin.removeListener("data", onEditorKey); process.stdout.removeListener("resize", onER); onQuit(); return; }
-      if (k === "\u001b") { stdin.removeListener("data", onEditorKey); process.stdout.removeListener("resize", onER); process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); return; }
-      if (k === "\r") { const chosen = editors[eSel]; stdin.removeListener("data", onEditorKey); process.stdout.removeListener("resize", onER); cb(chosen, filePath); return; }
-      const p = Math.max(1, Math.floor(C() / EW)); let i = eSel;
-      if (k === "\u001b[C") i = Math.min(editors.length - 1, i + 1); else if (k === "\u001b[D") i = Math.max(0, i - 1);
-      else if (k === "\u001b[A") i = Math.max(0, i - p); else if (k === "\u001b[B") i = Math.min(editors.length - 1, i + p);
-      if (i !== eSel) { eSel = i; drawEditor(); }
+      if (k === "\u0003") {
+        stdin.removeListener("data", onEditorKey);
+        process.stdout.removeListener("resize", onER);
+        onQuit();
+        return;
+      }
+
+      if (k === "\u001b") {
+        stdin.removeListener("data", onEditorKey);
+        process.stdout.removeListener("resize", onER);
+        process.stdout.on("resize", onResize);
+        stdin.on("data", onKey);
+        fullRedraw();
+        return;
+      }
+
+      if (k === "\r") {
+        const chosen = editors[eSel];
+        stdin.removeListener("data", onEditorKey);
+        process.stdout.removeListener("resize", onER);
+        cb(chosen, filePath);
+        return;
+      }
+
+      if (k === "\u001b[C") {
+        eSel = Math.min(editors.length - 1, eSel + 1);
+      } else if (k === "\u001b[D") {
+        eSel = Math.max(0, eSel - 1);
+      }
+
+      drawEditorPopup();
     }
-    stdin.on("data", onEditorKey); clearScreen(); drawEditor();
+
+    stdin.on("data", onEditorKey);
+
+    drawEditorPopup();
   }
 
   function doMkdir(): void {
@@ -873,13 +978,23 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       if (k === "\r") { browseEnter(); return; }
       return;
     }
+
     if (moveModePending) {
       if (k === "\u0003") { moveModePending = null; fullRedraw(); onQuit(); return; }
       if (k === "\u001b") { moveModePending = null; fullRedraw(); return; }
       if (k === "y" || k === "Y" || k === "\r") {
         if (k === "\r" && entries.length && entries[selIdx].isDir) {
           const target = path.join(currentDir, entries[selIdx].name);
-          try { fs.readdirSync(target); currentDir = target; process.chdir(currentDir); gitStatusDir = ""; reload(); fullRedraw(); } catch { showStatus("  cannot open directory", true); }
+          try {
+            fs.readdirSync(target);
+            currentDir = target;
+            process.chdir(currentDir);
+            gitStatusDir = "";
+            reload();
+            fullRedraw();
+          } catch {
+            showStatus("  cannot open directory", true);
+          }
           return;
         }
         doMoveConfirm(); return;
@@ -891,21 +1006,27 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       if (navigate(k)) render();
       return;
     }
+
     if (k === "\u0003") { onQuit(); return; }
+
     if (k === "h") { openLog(); return; }
+
     if (k === "\u001b") {
       if (searchQuery) { searchQuery = ""; searchActive = false; reload(); fullRedraw(); return; }
       if (getClipboard()) { clearClipboard(); render(); return; }
       if (selected.size > 0) { selected.clear(); render(); return; }
       onQuit(); return;
     }
+
     if (k === "/") { openSearch(); return; }
+
     if (k === "o") {
       if (cursorIsDir()) { enterBrowse(); return; }
       if (cursorIsImage()) { openImageWithFeh(pvState.path); return; }
       if (entries.length) showEditorPicker(path.join(currentDir, entries[selIdx].name));
       return;
     }
+
     if (k === "s") { doSort(); return; }
     if (k === "n") { doMkdir(); return; }
     if (k === "t") { doTouch(); return; }
@@ -922,28 +1043,50 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (k === "m") { doMoveInit(); return; }
     if (k === ".") { toggleHidden(); return; }
     if (k === "d" || k === "D") { if (entries.length) showDeleteConfirm(); return; }
+
     if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
     if (k === "\u001b[6~") { scrollPreview(pvState, 5, vis()); renderPreview(); drawBottom(); return; }
+
     if (k === "\r") {
       if (!entries.length) return;
+
       const sel = entries[selIdx];
-      const fullPath = path.join(currentDir, sel.name);
+
+      const fullPath = path.resolve(currentDir, sel.name);
+
       if (sel.isDir) {
         try {
-          fs.readdirSync(fullPath);
+          fs.accessSync(fullPath, fs.constants.R_OK);
+
           currentDir = fullPath;
           process.chdir(currentDir);
-          selected.clear(); searchQuery = ""; searchActive = false; gitStatusDir = "";
-          reload(); fullRedraw();
-        } catch { showStatus("  cannot open directory", true); }
+
+          selected.clear();
+          searchQuery = "";
+          searchActive = false;
+          gitStatusDir = "";
+
+          pvState.path = "";
+          pvState.content = null;
+
+          reload();
+          fullRedraw();
+        } catch {
+          showStatus("  cannot open directory", true);
+        }
         return;
       }
-      if (pvState.content?.kind === "image") {
+
+      const ext = path.extname(fullPath).slice(1).toLowerCase();
+      if (IMAGE_EXTS.has(ext)) {
         openImageWithFeh(fullPath);
         return;
       }
-      showEditorPicker(fullPath); return;
+
+      showEditorPicker(fullPath);
+      return;
     }
+
     if (navigate(k)) render();
   }
 
