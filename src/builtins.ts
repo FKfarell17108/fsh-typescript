@@ -119,7 +119,14 @@ export function handleBuiltin(
 
     case "dir":
       pauseInput();
-      interactiveDir(() => resumeInput());
+      interactiveDir((result: LsResult) => {
+        if (result.kind === "open") {
+          const cmdLine = `${result.editor} "${result.file}"`;
+          resumeInputAndExecute(cmdLine);
+        } else {
+          resumeInput();
+        }
+      });
       return true;
 
     case "alias":

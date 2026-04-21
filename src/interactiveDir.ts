@@ -5,7 +5,7 @@ import { moveToTrash } from "./trash";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
-import { showInlineInput } from "./interactiveLs";
+import { showInlineInput, showEditorPickerStandalone, LsResult } from "./interactiveLs";
 import { loadBookmarks, toggleBookmark, isBookmarked } from "./bookmarks";
 import { showBookmarkPicker } from "./bookmarkPicker";
 import {
@@ -64,7 +64,7 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length;
 }
 
-export function interactiveDir(onExit: () => void): void {
+export function interactiveDir(onExit: (result: LsResult) => void): void {
   let cwd = process.cwd(); loadLog(); loadBookmarks();
 
   function loadDirs(dir: string): { name: string; hidden: boolean }[] {
@@ -89,10 +89,10 @@ export function interactiveDir(onExit: () => void): void {
 
   let entries = visibleEntries();
 
-  if (!process.stdin.isTTY) { console.log(entries.map(e => e.name + "/").join("  ")); return onExit(); }
-  if (allEntries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
+  if (!process.stdin.isTTY) { console.log(entries.map(e => e.name + "/").join("  ")); return onExit({ kind: "quit" }); }
+  if (allEntries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit({ kind: "quit" }); }
   if (entries.length === 0 && allEntries.length > 0) { showHidden = true; entries = visibleEntries(); }
-  if (entries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit(); }
+  if (entries.length === 0) { console.log(chalk.gray("(no subdirectories)")); return onExit({ kind: "quit" }); }
 
   const stdin = process.stdin;
   let selIdx = 0; let scrollTop = 0;
@@ -291,6 +291,25 @@ export function interactiveDir(onExit: () => void): void {
         drawBottom();
         return;
       }
+      showEditorPickerStandalone(
+        resolvedFull, stdin, onResize, onKey,
+        render, fullRedraw,
+        () => { process.chdir(cwd); exit(); },
+        (ed, f) => {
+          browseMode = false;
+          browseIdx = 0;
+          browseStack = [];
+          pvState.scrollTop = 0;
+
+          const targetDir = path.dirname(f);
+          cwd = targetDir;
+          process.chdir(cwd);
+
+          cleanup();
+          setTimeout(() => onExit({ kind: "open", editor: ed, file: f }), 50);
+        },
+        () => { },
+      );
     }
   }
 
@@ -493,8 +512,10 @@ export function interactiveDir(onExit: () => void): void {
       return;
     }
 
-    const targetPath = path.join(cwd, entries[selIdx].name);
-    updatePreview(pvState, targetPath);
+    if (!browseMode) {
+      const targetPath = path.join(cwd, entries[selIdx].name);
+      updatePreview(pvState, targetPath);
+    }
 
     const bIdx = browseMode ? browseIdx : undefined;
     if (isSplit()) {
@@ -507,7 +528,7 @@ export function interactiveDir(onExit: () => void): void {
   function render(): void { drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom(); }
   function fullRedraw(): void { clearScreen(); adjustScroll(); render(); }
   function cleanup(): void { process.stdout.removeListener("resize", onResize); stdin.removeAllListeners("data"); exitAlt(); }
-  function exit(): void { process.chdir(cwd); cleanup(); setTimeout(onExit, 50); }
+  function exit(): void { process.chdir(cwd); cleanup(); setTimeout(() => onExit({ kind: "quit" }), 50); }
 
   function buildMultiClip(kind: "copy" | "cut") {
     const targets = getTargets();

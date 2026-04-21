@@ -27,7 +27,7 @@ const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "
 
 const EDITOR_CANDIDATES = ["nvim", "vim", "vi", "nano", "emacs", "micro", "hx", "helix", "code", "gedit"];
 
-function getInstalledEditors(): string[] {
+export function getInstalledEditors(): string[] {
   return EDITOR_CANDIDATES.filter(e => {
     try { execFileSync("which", [e], { stdio: "ignore" }); return true; } catch { return false; }
   });
@@ -58,6 +58,92 @@ export function showInlineInput(stdin: NodeJS.ReadStream, label: string, defVal:
     if (raw.length === 1 && raw.charCodeAt(0) >= 32) { value = value.slice(0, cursor) + raw + value.slice(cursor); cursor++; draw(); }
   }
   stdin.on("data", onData);
+}
+
+
+export function showEditorPickerStandalone(
+  filePath: string,
+  stdin: NodeJS.ReadStream,
+  onResizeFn: () => void,
+  onKeyFn: (k: string) => void,
+  renderFn: () => void,
+  fullRedrawFn: () => void,
+  onQuitFn: () => void,
+  onChoose: (editor: string, file: string) => void,
+  onCancel: () => void,
+): void {
+  const editors = getInstalledEditors();
+  if (!editors.length) { onCancel(); return; }
+  if (editors.length === 1) { onChoose(editors[0], filePath); return; }
+
+  let eSel = 0;
+  const EW = Math.max(...editors.map(e => e.length)) + 4;
+
+  function drawPopup(): void {
+    renderFn();
+    const cols = C(); const rows = R();
+    const popupW = Math.min(cols - 10, Math.max(50, editors.length * (EW + 1)));
+    const popupH = 7;
+    const startY = Math.floor((rows - popupH) / 2);
+    const startX = Math.floor((cols - popupW) / 2);
+    const borderCol = chalk.gray;
+    const bgSpace = " ".repeat(popupW - 2);
+    w(at(startY, startX) + borderCol("┏" + "━".repeat(popupW - 2) + "┓"));
+    w(at(startY + 1, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + 2, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + 3, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + 4, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + 5, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + 6, startX) + borderCol("┗" + "━".repeat(popupW - 2) + "┛"));
+    const header = " CHOOSE EDITOR ";
+    w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.white(header));
+    w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
+    let editorLine = "";
+    for (let i = 0; i < editors.length; i++) {
+      const name = `  ${editors[i]}  `;
+      editorLine += i === eSel ? chalk.bgWhite.black.bold(name) + " " : chalk.cyan(name) + " ";
+    }
+    const lineX = startX + Math.floor((popupW - visibleLen(editorLine)) / 2);
+    w(at(startY + 3, lineX) + editorLine);
+    const fileLabel = `File: ${path.basename(filePath)}`;
+    w(at(startY + 5, startX + Math.floor((popupW - fileLabel.length) / 2)) + chalk.dim(fileLabel));
+  }
+
+  const onER = () => drawPopup();
+  process.stdout.removeListener("resize", onResizeFn);
+  process.stdout.on("resize", onER);
+  stdin.removeListener("data", onKeyFn);
+
+  function onEditorKey(k: string): void {
+    if (k === "\u0003") {
+      stdin.removeListener("data", onEditorKey);
+      process.stdout.removeListener("resize", onER);
+      onQuitFn();
+      return;
+    }
+    if (k === "\u001b") {
+      stdin.removeListener("data", onEditorKey);
+      process.stdout.removeListener("resize", onER);
+      process.stdout.on("resize", onResizeFn);
+      stdin.on("data", onKeyFn);
+      fullRedrawFn();
+      onCancel();
+      return;
+    }
+    if (k === "\r") {
+      const chosen = editors[eSel];
+      stdin.removeListener("data", onEditorKey);
+      process.stdout.removeListener("resize", onER);
+      onChoose(chosen, filePath);
+      return;
+    }
+    if (k === "\u001b[C") eSel = Math.min(editors.length - 1, eSel + 1);
+    else if (k === "\u001b[D") eSel = Math.max(0, eSel - 1);
+    drawPopup();
+  }
+
+  stdin.on("data", onEditorKey);
+  drawPopup();
 }
 
 export function interactiveLs(onExit: (result: LsResult) => void): void {
