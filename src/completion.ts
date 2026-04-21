@@ -28,6 +28,9 @@ export function getCandidates(line: string): { candidates: string[]; partial: st
       case "neofetch":
         const neoSubs = ["on", "off", "preview"];
         return { candidates: neoSubs.filter(s => s.startsWith(partial)), partial };
+
+      case "fsh":
+        return { candidates: [], partial };
     }
 
     const { candidates } = getFileCandidates(partial);
