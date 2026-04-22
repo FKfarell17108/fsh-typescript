@@ -947,9 +947,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     type ConfirmMode = "confirm" | "browse" | "preview";
     let mode: ConfirmMode = "confirm";
 
-    let confirmSel = 1; // 0=yes, 1=no, 2=browse/preview (when enabled)
+    let confirmSel = 1;
 
-    // Browse (dir) state
     type BrowseEntry = { name: string; isDir: boolean };
     const browseRootPath = allowBrowse ? path.join(currentDir, single!.name) : "";
     const browseRootLabel = allowBrowse ? displayName(single!.name, true) : "";
@@ -960,7 +959,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     let browseScrollTop = 0;
     const browseStack: { browsePath: string; browseLabel: string; browseSel: number; browseScrollTop: number }[] = [];
 
-    // Preview (file) state (scrollable)
     let previewPath = allowPreview ? path.join(currentDir, single!.name) : "";
     let previewLabel = allowPreview ? single!.name : "";
     let previewLines: string[] | null = null;
@@ -1035,7 +1033,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
 
       const listTop = startY + 3;
-      const listH = popupH - 6; // header(2) + sep(1) + bottom(2) + borders
+      const listH = popupH - 6;
       const shown = Math.max(1, listH);
 
       function adjustBrowseScroll(): void {
@@ -1184,7 +1182,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     }
 
     function onConfirmKey(k: string): void {
-      // modal sub-modes
       if (mode === "browse") {
         if (k === "\u001b" || k === "\u0003") {
           mode = "confirm";
@@ -1219,7 +1216,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
             drawBrowsePopup();
             return;
           }
-          // open file preview within browse
           previewPath = fp;
           previewLabel = e.name;
           previewLines = null;
@@ -1258,8 +1254,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         if (k === "\u001b[B") { previewScrollTop = previewLines ? Math.min(Math.max(0, previewLines.length - shown), previewScrollTop + 1) : previewScrollTop + 1; drawPreviewPopup(); return; }
         if (k === "\u001b[D") { previewScrollLeft = Math.max(0, previewScrollLeft - 1); drawPreviewPopup(); return; }
         if (k === "\u001b[C") { previewScrollLeft = previewScrollLeft + 1; drawPreviewPopup(); return; }
-        if (k === "\u001b[5~") { previewScrollTop = Math.max(0, previewScrollTop - shown); drawPreviewPopup(); return; } // PgUp
-        if (k === "\u001b[6~") { previewScrollTop = previewLines ? Math.min(Math.max(0, previewLines.length - shown), previewScrollTop + shown) : previewScrollTop + shown; drawPreviewPopup(); return; } // PgDn
+        if (k === "\u001b[5~") { previewScrollTop = Math.max(0, previewScrollTop - shown); drawPreviewPopup(); return; }
+        if (k === "\u001b[6~") { previewScrollTop = previewLines ? Math.min(Math.max(0, previewLines.length - shown), previewScrollTop + shown) : previewScrollTop + shown; drawPreviewPopup(); return; }
         return;
       }
 
@@ -1304,7 +1300,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
           return;
         }
         if (confirmSel === 2 && allowBrowse) {
-          // enter browse mode (dir)
           loadBrowseEntries();
           browseSel = 0; browseScrollTop = 0;
           mode = "browse";

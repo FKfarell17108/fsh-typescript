@@ -751,7 +751,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
 
     type ConfirmMode = "confirm" | "browse" | "preview";
     let mode: ConfirmMode = "confirm";
-    let confirmSel = 1; // 0 yes, 1 no, 2 browse
+    let confirmSel = 1;
 
     type BrowseEntry = { name: string; isDir: boolean };
     const browseRootPath = allowBrowse ? path.join(cwd, single!.name) : "";
