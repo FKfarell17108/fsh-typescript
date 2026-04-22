@@ -29,8 +29,16 @@ import { closeImagePreview } from "./preview";
 
 // if (isNeofetchEnabled()) printNeofetch();
 
-process.on("exit", () => { closeImagePreview(); });
-process.on("SIGINT", () => { closeImagePreview(); process.exit(130); });
+type MainProcessHandlers = {
+  onExit?: () => void;
+  onSigintExit?: () => void;
+  onSigintAbsorb?: () => void;
+};
+const mainProcessHandlersKey = "__fshMainProcessHandlers__";
+const mainProcessHandlers = (globalThis as any)[mainProcessHandlersKey] as MainProcessHandlers | undefined;
+if (mainProcessHandlers?.onExit) process.removeListener("exit", mainProcessHandlers.onExit);
+if (mainProcessHandlers?.onSigintExit) process.removeListener("SIGINT", mainProcessHandlers.onSigintExit);
+if (mainProcessHandlers?.onSigintAbsorb) process.removeListener("SIGINT", mainProcessHandlers.onSigintAbsorb);
 
 let rl: readline.Interface;
 let historyEntries: HistoryEntry[] = loadHistoryEntries();
@@ -42,9 +50,21 @@ let inputPaused = false;
 let _absorbSigint = false;
 export function setAbsorbSigint(v: boolean) { _absorbSigint = v; }
 
-process.on("SIGINT", () => {
+const onExit = () => { closeImagePreview(); };
+const onSigintExit = () => { closeImagePreview(); process.exit(130); };
+const onSigintAbsorb = () => {
   if (_absorbSigint) return;
-});
+};
+
+process.on("exit", onExit);
+process.on("SIGINT", onSigintExit);
+process.on("SIGINT", onSigintAbsorb);
+
+(globalThis as any)[mainProcessHandlersKey] = {
+  onExit,
+  onSigintExit,
+  onSigintAbsorb,
+} as MainProcessHandlers;
 
 export function isInputPaused(): boolean { return inputPaused; }
 

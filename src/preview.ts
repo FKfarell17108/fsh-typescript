@@ -268,6 +268,7 @@ const TEXT_COLORS: Record<string, (s: string) => string> = {
   log: chalk.hex("#888FA8"), txt: chalk.white,
 };
 function lineColor(ext: string): (s: string) => string { return TEXT_COLORS[ext] ?? chalk.white; }
+export function previewLineColor(ext: string): (s: string) => string { return lineColor(ext); }
 
 function truncateAnsi(str: string, maxVisible: number): string {
   let visible = 0; let out = ""; let i = 0;
