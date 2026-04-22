@@ -3,6 +3,7 @@ import path from "path";
 import os from "os";
 import chalk from "chalk";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
+import { showPopupInput } from "./interactiveLs";
 
 export type GeneralEventKind = "command" | "copy" | "move" | "rename" | "trash" | "restore" | "delete" | "empty_trash";
 export type GeneralEvent = { id: string; kind: GeneralEventKind; label: string; detail: string; ts: number; };
@@ -284,15 +285,37 @@ export function showGeneralHistory(onBack: () => void): void {
     function deleteSelected(): void {
       const toDelete = eSelected.size > 0 ? Array.from(eSelected) : (editEvents[eSel] ? [editEvents[eSel].id] : []);
       if (!toDelete.length) return;
-      events = events.filter(e => !toDelete.includes(e.id)); persist(); eSelected.clear();
-      const remaining = events.filter(e => catKinds.includes(e.kind));
-      if (!remaining.length) { backFromEdit(); return; }
-      editEvents.splice(0, editEvents.length, ...remaining);
-      eSel = Math.min(eSel, editEvents.length - 1); eAdjust(); drawEdit();
+
+      process.stdout.removeListener("resize", onEditResize); stdin.removeListener("data", onEditKey);
+      const title = eSelected.size > 0 ? `DELETE ${eSelected.size} ITEMS?` : "DELETE EVENT?";
+      showPopupInput(stdin, title, null, drawEdit,
+        () => {
+          process.stdout.on("resize", onEditResize); stdin.on("data", onEditKey);
+          events = events.filter(e => !toDelete.includes(e.id)); persist(); eSelected.clear();
+          const remaining = events.filter(e => catKinds.includes(e.kind));
+          if (!remaining.length) { backFromEdit(); return; }
+          editEvents.splice(0, editEvents.length, ...remaining);
+          eSel = Math.min(eSel, editEvents.length - 1); eAdjust(); drawEdit();
+        },
+        () => {
+          process.stdout.on("resize", onEditResize); stdin.on("data", onEditKey);
+          drawEdit();
+        }
+      );
     }
 
     function deleteAll(): void {
-      events = events.filter(e => !catKinds.includes(e.kind)); persist(); backFromEdit();
+      process.stdout.removeListener("resize", onEditResize); stdin.removeListener("data", onEditKey);
+      showPopupInput(stdin, `DELETE ALL ${title.toUpperCase()}?`, null, drawEdit,
+        () => {
+          process.stdout.on("resize", onEditResize); stdin.on("data", onEditKey);
+          events = events.filter(e => !catKinds.includes(e.kind)); persist(); backFromEdit();
+        },
+        () => {
+          process.stdout.on("resize", onEditResize); stdin.on("data", onEditKey);
+          drawEdit();
+        }
+      );
     }
 
     function backFromEdit(): void {

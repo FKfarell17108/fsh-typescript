@@ -740,231 +740,9 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     );
   }
 
-  function showDeleteConfirm(): void {
-    const targets = getTargets();
-    if (!targets.length) return;
-    const multi = targets.length > 1;
-    const single = !multi ? targets[0] : null;
-    const singleExt = single ? path.extname(single.name).slice(1).toLowerCase() : "";
-    const singleIsVideo = !!single && VIDEO_EXTS.has(singleExt);
-    const allowBrowse = !!single;
-
-    function buildDeleteBodyLines(innerW: number, maxLines: number): string[] {
-      const lines: string[] = [];
-      const push = (s: string) => { if (lines.length < maxLines) lines.push(s); };
-
-      if (multi) {
-        push(chalk.bold.white(padOrTrim(`Move ${targets.length} dirs to trash?`, innerW)));
-        const remaining = maxLines - lines.length;
-        if (remaining <= 0) return lines;
-        if (targets.length <= remaining) {
-          for (const t of targets) push(chalk.blue(padOrTrim("▸ " + t.name + "/", innerW)));
-        } else {
-          const slots = Math.max(0, remaining - 1);
-          for (const t of targets.slice(0, slots)) push(chalk.blue(padOrTrim("▸ " + t.name + "/", innerW)));
-          push(chalk.dim(padOrTrim(`... and ${targets.length - slots} more`, innerW)));
-        }
-      } else {
-        const t = targets[0];
-        const full = path.join(cwd, t.name);
-        push(padOrTrim(chalk.gray("Dir: ") + chalk.blue(t.name + "/"), innerW));
-        const remaining = maxLines - lines.length;
-        if (remaining <= 0) return lines;
-        try {
-          const ch = fs.readdirSync(full, { withFileTypes: true });
-          if (!ch.length) push(chalk.gray(padOrTrim("(empty directory)", innerW)));
-          else if (ch.length <= remaining) {
-            for (const c of ch) {
-              const row = (c.isDirectory() ? "▸ " : "  ") + c.name + (c.isDirectory() ? "/" : "");
-              push((c.isDirectory() ? chalk.blue : chalk.gray)(padOrTrim(row, innerW)));
-            }
-          } else {
-            const slots = Math.max(0, remaining - 1);
-            for (const c of ch.slice(0, slots)) {
-              const row = (c.isDirectory() ? "▸ " : "  ") + c.name + (c.isDirectory() ? "/" : "");
-              push((c.isDirectory() ? chalk.blue : chalk.gray)(padOrTrim(row, innerW)));
-            }
-            push(chalk.dim(padOrTrim(`... and ${ch.length - slots} more`, innerW)));
-          }
-        } catch { push(chalk.red(padOrTrim("cannot read directory", innerW))); }
-      }
-      return lines.slice(0, maxLines);
-    }
-
-    type ConfirmMode = "confirm" | "browse" | "preview";
-    let mode: ConfirmMode = "confirm";
-    let confirmSel = 1;
-
-    type BrowseEntry = { name: string; isDir: boolean };
-    const browseRootPath = allowBrowse ? path.join(cwd, single!.name) : "";
-    const browseRootLabel = allowBrowse ? (single!.name + "/") : "";
-    let browsePath = browseRootPath;
-    let browseLabel = browseRootLabel;
-    let browseEntries: BrowseEntry[] = [];
-    let browseSel = 0;
-    let browseScrollTop = 0;
-    const browseStack: { browsePath: string; browseLabel: string; browseSel: number; browseScrollTop: number }[] = [];
-
-    let previewPath = "";
-    let previewLabel = "";
-    let previewLines: string[] | null = null;
-    let previewScrollTop = 0;
-    let previewScrollLeft = 0;
-    let deleteFehOpen = false;
-
-    function popupFrame(popupW: number, popupH: number, startX: number, startY: number): void {
-      const borderCol = chalk.gray;
-      const bgSpace = " ".repeat(popupW - 2);
-      for (let r = 0; r < popupH; r++) {
-        if (r === 0) w(at(startY + r, startX) + borderCol("┏" + "━".repeat(popupW - 2) + "┓"));
-        else if (r === popupH - 1) w(at(startY + r, startX) + borderCol("┗" + "━".repeat(popupW - 2) + "┛"));
-        else w(at(startY + r, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
-      }
-    }
-
-    function drawDeletePopup(): void {
-      render();
-      const cols = C(); const rows = R();
-      const popupW = Math.min(cols - 10, Math.max(50, 52));
-      const innerW = popupW - 4;
-      const maxBody = Math.min(12, Math.max(2, rows - 14));
-      const bodyLines = buildDeleteBodyLines(innerW, maxBody);
-      const popupH = bodyLines.length + 6;
-      const startY = Math.floor((rows - popupH) / 2);
-      const startX = Math.floor((cols - popupW) / 2);
-      popupFrame(popupW, popupH, startX, startY);
-
-      const header = " MOVE TO TRASH ";
-      w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.yellow(header));
-      w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
-      let bodyRow = startY + 3;
-      for (const bl of bodyLines) { w(at(bodyRow, startX + 2) + bl); bodyRow++; }
-
-      let choiceLine = "";
-      choiceLine += confirmSel === 0 ? chalk.bgWhite.black.bold("  Yes  ") + " " : chalk.green("  Yes  ") + " ";
-      choiceLine += confirmSel === 1 ? chalk.bgWhite.black.bold("  No  ") + " " : chalk.red("  No  ") + " ";
-      if (allowBrowse && !singleIsVideo) choiceLine += confirmSel === 2 ? chalk.bgWhite.black.bold("  Browse  ") + " " : chalk.yellow("  Browse  ") + " ";
-      w(at(startY + popupH - 2, startX + Math.floor((popupW - visibleLen(choiceLine)) / 2)) + choiceLine);
-    }
-
-    function drawBrowsePopup(): void {
-      render();
-      const cols = C(); const rows = R();
-      const popupW = Math.min(cols - 10, Math.max(60, 64));
-      const innerW = popupW - 4;
-      const popupH = Math.min(rows - 6, 18);
-      const startY = Math.floor((rows - popupH) / 2);
-      const startX = Math.floor((cols - popupW) / 2);
-      popupFrame(popupW, popupH, startX, startY);
-
-      const header = " BROWSE DIR ";
-      w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.yellow(header));
-      w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
-
-      const listTop = startY + 3;
-      const shown = Math.max(1, popupH - 6);
-      if (browseSel < browseScrollTop) browseScrollTop = browseSel;
-      if (browseSel >= browseScrollTop + shown) browseScrollTop = browseSel - shown + 1;
-      if (browseScrollTop < 0) browseScrollTop = 0;
-
-      let out = "";
-      if (!browseEntries.length) {
-        out += at(listTop, startX + 2) + chalk.gray(padOrTrim("(empty directory)", innerW));
-        for (let i = 1; i < shown; i++) out += at(listTop + i, startX + 2) + " ".repeat(innerW);
-      } else {
-        for (let i = 0; i < shown; i++) {
-          out += at(listTop + i, startX + 2) + clr();
-          const e = browseEntries[browseScrollTop + i];
-          if (!e) { out += " ".repeat(innerW); continue; }
-          const active = (browseScrollTop + i) === browseSel;
-          const raw = " " + (e.isDir ? "▸ " : "  ") + e.name + (e.isDir ? "/" : "");
-          const padded = padOrTrim(raw, innerW);
-          out += active ? chalk.bgWhite.black.bold(padded) : (e.isDir ? chalk.blue(padded) : chalk.white(padded));
-        }
-      }
-      w(out);
-
-      const footer = chalk.dim("Esc Back  Tab Up  Enter Open  ↑/↓ Navigate");
-      const label = chalk.gray("Dir: ") + chalk.blue(browseLabel);
-      const footerLine = padOrTrim(label, innerW - 2) + "  " + footer;
-      w(at(startY + popupH - 2, startX + 2) + padOrTrim(footerLine, innerW));
-    }
-
-    function drawPreviewPopup(): void {
-      render();
-      const cols = C(); const rows = R();
-      const popupW = Math.min(cols - 10, Math.max(70, 72));
-      const innerW = popupW - 4;
-      const popupH = Math.min(rows - 6, 18);
-      const startY = Math.floor((rows - popupH) / 2);
-      const startX = Math.floor((cols - popupW) / 2);
-      popupFrame(popupW, popupH, startX, startY);
-
-      const header = " PREVIEW FILE ";
-      w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.yellow(header));
-      w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
-
-      const listTop = startY + 3;
-      const shown = Math.max(1, popupH - 6);
-      const ext = path.extname(previewPath).slice(1).toLowerCase();
-      const isImage = IMAGE_EXTS.has(ext);
-      const isVideo = VIDEO_EXTS.has(ext);
-      if (!previewLines && !isImage && !isVideo) {
-        try {
-          const raw = fs.readFileSync(previewPath, "utf8");
-          previewLines = raw.length === 0 ? [] : raw.split("\n");
-        } catch { previewLines = ["(binary file)"]; }
-      }
-
-      let out = "";
-      if (isImage || isVideo) {
-        const dims = isImage ? readImageDimensions(previewPath) : readVideoDimensions(previewPath);
-        out += at(listTop, startX + 2) + chalk.gray(padOrTrim("File: " + path.basename(previewPath), innerW));
-        out += at(listTop + 1, startX + 2) + chalk.gray(padOrTrim(`Dimensions: ${dims ? `${dims.width}x${dims.height}` : "unknown"}`, innerW));
-        for (let i = 2; i < shown; i++) out += at(listTop + i, startX + 2) + " ".repeat(innerW);
-      } else if (!(previewLines && previewLines.length)) {
-        out += at(listTop, startX + 2) + chalk.gray(padOrTrim("(empty file)", innerW));
-        for (let i = 1; i < shown; i++) out += at(listTop + i, startX + 2) + " ".repeat(innerW);
-      } else {
-        const lines = previewLines ?? [];
-        const ext = path.extname(previewPath).slice(1).toLowerCase();
-        const colorFn = previewLineColor(ext);
-        const maxTop = Math.max(0, lines.length - shown);
-        previewScrollTop = Math.min(Math.max(0, previewScrollTop), maxTop);
-        previewScrollLeft = Math.max(0, previewScrollLeft);
-        const lineNoW = Math.min(5, Math.max(3, String(lines.length).length + 1));
-        const bodyW = Math.max(1, innerW - lineNoW);
-        const maxLineLen = lines.reduce((m, s) => Math.max(m, s.length), 0);
-        const maxLeft = Math.max(0, maxLineLen - Math.max(1, bodyW - 1));
-        previewScrollLeft = Math.min(previewScrollLeft, maxLeft);
-        for (let i = 0; i < shown; i++) {
-          out += at(listTop + i, startX + 2) + clr();
-          const idx = previewScrollTop + i;
-          const line = lines[idx];
-          if (line === undefined) { out += " ".repeat(innerW); continue; }
-          const sliced = line.slice(previewScrollLeft);
-          const leftMark = previewScrollLeft > 0 ? "…" : "";
-          const withLeft = leftMark + sliced;
-          const body = withLeft.length > bodyW ? withLeft.slice(0, Math.max(0, bodyW - 1)) + "…" : withLeft;
-          const ln = chalk.dim(String(idx + 1).padStart(lineNoW - 1, " ") + " ");
-          out += ln + (line.trim().length === 0 ? chalk.dim : colorFn)(padOrTrim(body, bodyW));
-        }
-      }
-      w(out);
-
-      const label = chalk.gray("File: ") + chalk.white(previewLabel);
-      const vRange = (!isImage && !isVideo && previewLines && previewLines.length > shown) ? ` ${previewScrollTop + 1}-${Math.min(previewScrollTop + shown, previewLines.length)}/${previewLines.length}` : "";
-      const hRange = (!isImage && !isVideo && previewScrollLeft > 0) ? `  col ${previewScrollLeft + 1}` : "";
-      w(at(startY + popupH - 2, startX + 2) + padOrTrim(padOrTrim(label, innerW) + chalk.dim(vRange + hRange), innerW));
-    }
-
-    function cleanupListeners(): void {
-      if (deleteFehOpen) { closeImagePreview(); deleteFehOpen = false; }
-      process.stdout.removeListener("resize", onCR);
-      process.stdout.on("resize", onResize);
-    }
 
     function doTrash(): void {
+      const targets = getTargets();
       let errors = 0;
       for (const t of targets) {
         try { moveToTrash(path.join(cwd, t.name)); allEntries = allEntries.filter(e => e.name !== t.name); }
@@ -977,115 +755,25 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
       refreshPreview();
     }
 
-    function resetBrowseState(): void {
-      browsePath = browseRootPath;
-      browseLabel = browseRootLabel;
-      browseSel = 0;
-      browseScrollTop = 0;
-      browseStack.length = 0;
-    }
+  function showDeleteConfirm(): void {
+    const targets = getTargets();
+    if (!targets.length) return;
+    const multi = targets.length > 1;
+    const title = multi ? `TRASH ${targets.length} ITEMS?` : "TRASH ITEM?";
 
-    function loadBrowseEntries(): void {
-      try {
-        browseEntries = fs.readdirSync(browsePath, { withFileTypes: true })
-          .map(d => ({ name: d.name, isDir: d.isDirectory() }))
-          .sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
-      } catch { browseEntries = []; }
-    }
-
-    process.stdout.removeListener("resize", onResize);
-    const onCR = () => { if (mode === "browse") drawBrowsePopup(); else if (mode === "preview") drawPreviewPopup(); else drawDeletePopup(); };
-    process.stdout.on("resize", onCR);
-    stdin.removeListener("data", onKey);
-
-    function onConfirmKey(k: string): void {
-      if (mode === "browse") {
-        if (k === "\u001b" || k === "\u0003") { mode = "confirm"; resetBrowseState(); drawDeletePopup(); return; }
-        if (k === "\u001b[A" && browseSel > 0) { browseSel--; drawBrowsePopup(); return; }
-        if (k === "\u001b[B" && browseSel < browseEntries.length - 1) { browseSel++; drawBrowsePopup(); return; }
-        if (k === "\t") {
-          if (browseStack.length > 0) {
-            const prev = browseStack.pop()!;
-            browsePath = prev.browsePath; browseLabel = prev.browseLabel; browseSel = prev.browseSel; browseScrollTop = prev.browseScrollTop;
-            loadBrowseEntries(); drawBrowsePopup();
-          }
-          return;
-        }
-        if (k.startsWith("\u001b")) return;
-        if (k === "\r" && browseEntries.length > 0) {
-          const e = browseEntries[browseSel];
-          const fp = path.join(browsePath, e.name);
-          if (e.isDir) {
-            browseStack.push({ browsePath, browseLabel, browseSel, browseScrollTop });
-            browsePath = fp; browseLabel = browseLabel + e.name + "/";
-            loadBrowseEntries(); browseSel = 0; browseScrollTop = 0; drawBrowsePopup(); return;
-          }
-          previewPath = fp; previewLabel = e.name; previewLines = null; previewScrollTop = 0; previewScrollLeft = 0;
-          mode = "preview";
-          const ext = path.extname(previewPath).slice(1).toLowerCase();
-          if (IMAGE_EXTS.has(ext)) { openImageWithFeh(previewPath); deleteFehOpen = true; }
-          drawPreviewPopup(); return;
-        }
-        return;
-      }
-
-      if (mode === "preview") {
-        if (k === "\u001b" || k === "\u0003") {
-          if (deleteFehOpen) {
-            closeImagePreview();
-            deleteFehOpen = false;
-            stdin.removeListener("data", onConfirmKey);
-            cleanupListeners();
-            stdin.on("data", onKey);
-            fullRedraw();
-            return;
-          }
-          mode = "browse";
-          drawBrowsePopup();
-          return;
-        }
-        const ext = path.extname(previewPath).slice(1).toLowerCase();
-        if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext)) return;
-        const shown = Math.max(1, Math.min(R() - 6, 18) - 6);
-        if (k === "\u001b[A") { previewScrollTop = Math.max(0, previewScrollTop - 1); drawPreviewPopup(); return; }
-        if (k === "\u001b[B") { previewScrollTop = previewLines ? Math.min(Math.max(0, previewLines.length - shown), previewScrollTop + 1) : previewScrollTop + 1; drawPreviewPopup(); return; }
-        if (k === "\u001b[D") { previewScrollLeft = Math.max(0, previewScrollLeft - 1); drawPreviewPopup(); return; }
-        if (k === "\u001b[C") { previewScrollLeft = previewScrollLeft + 1; drawPreviewPopup(); return; }
-        if (k === "\u001b[5~") { previewScrollTop = Math.max(0, previewScrollTop - shown); drawPreviewPopup(); return; }
-        if (k === "\u001b[6~") { previewScrollTop = previewLines ? Math.min(Math.max(0, previewLines.length - shown), previewScrollTop + shown) : previewScrollTop + shown; drawPreviewPopup(); return; }
-        return;
-      }
-
-      if (k === "\u0003" || k === "\u001b" || k === "n" || k === "N") {
-        stdin.removeListener("data", onConfirmKey); cleanupListeners(); stdin.on("data", onKey); fullRedraw(); return;
-      }
-      if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirmKey); cleanupListeners();
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showPopupInput(stdin, title, null, render,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
         doTrash();
         if (!entries.length && !allEntries.length) { process.chdir(cwd); return exit(); }
-        stdin.on("data", onKey); fullRedraw(); return;
+        fullRedraw();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
       }
-      if ((k === "o" || k === "O") && allowBrowse && !singleIsVideo) { confirmSel = 2; drawDeletePopup(); return; }
-      if (k === "\r") {
-        if (confirmSel === 0) {
-          stdin.removeListener("data", onConfirmKey); cleanupListeners();
-          doTrash();
-          if (!entries.length && !allEntries.length) { process.chdir(cwd); return exit(); }
-          stdin.on("data", onKey); fullRedraw(); return;
-        }
-        if (confirmSel === 2 && allowBrowse && !singleIsVideo) {
-          resetBrowseState(); loadBrowseEntries(); browseSel = 0; browseScrollTop = 0; mode = "browse"; drawBrowsePopup(); return;
-        }
-        stdin.removeListener("data", onConfirmKey); cleanupListeners(); stdin.on("data", onKey); fullRedraw(); return;
-      }
-      const maxSel = (allowBrowse && !singleIsVideo) ? 2 : 1;
-      if (k === "\u001b[C") confirmSel = Math.min(maxSel, confirmSel + 1);
-      else if (k === "\u001b[D") confirmSel = Math.max(0, confirmSel - 1);
-      drawDeletePopup();
-    }
-
-    stdin.on("data", onConfirmKey);
-    drawDeletePopup();
+    );
   }
 
   function doSort(): void {
@@ -1162,7 +850,6 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
       fullRedraw();
     }
     stdin.on("data", onPopupKey);
-    drawPopup();
   }
 
   function onResize(): void { adjustScroll(); fullRedraw(); }

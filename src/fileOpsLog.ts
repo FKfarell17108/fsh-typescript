@@ -4,6 +4,7 @@ import fs from "fs";
 import { getLog, loadLog, FileOp, OpKind } from "./fileOps";
 import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { LogSort, DEFAULT_LOG_SORT, logSortLabel, showSortPicker } from "./sort";
+import { showPopupInput } from "./interactiveLs";
 
 function sortLog(ops: FileOp[], sort: LogSort): FileOp[] {
   const arr = [...ops];
@@ -265,51 +266,26 @@ function runLogPanel(stdin: NodeJS.ReadStream, onBack: () => void, ownsAltScreen
 
   function showConfirmDelete(targets: FileOp[]): void {
     const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [
-      { key: "Y",     label: multi ? `Delete ${targets.length} entries` : "Delete Entry", color: "red"   },
-      { key: "N/Esc", label: "Cancel", color: "green" },
-    ];
-    function drawConfirm(): void {
-      const start = 3; const avail = R() - 3; const cols = C();
-      drawNavbar([confirmNav]); let out = ""; let ln = 0;
-      function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      if (multi) {
-        line(chalk.bold(`  Delete ${targets.length} log entries`));
-        line(chalk.dim("  (only removes entries from history — files are not affected)"));
-        line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        for (const t of targets.slice(0, avail - 4)) line("  " + kindLabel(t.kind) + "  " + chalk.white(path.basename(t.srcPath)));
-        if (targets.length > avail - 4) line(chalk.gray(`  ... and ${targets.length - (avail - 4)} more`));
-      } else {
-        const t = targets[0];
-        line(chalk.bold("  Delete log entry"));
-        line(chalk.dim("  (only removes the entry from history — files are not affected)"));
-        line(chalk.dim("─".repeat(Math.min(cols - 2, 60))));
-        line("  " + kindLabel(t.kind) + "  " + chalk.white(path.basename(t.srcPath)));
-        line("  " + chalk.dim("from: ") + chalk.white(homify(t.srcPath)));
-        if (t.kind === "rename") line("  " + chalk.dim("to:   ") + chalk.white(t.destName));
-        else line("  " + chalk.dim("to:   ") + chalk.white(homify(t.destPath)));
-        line("  " + chalk.dim("time: ") + chalk.white(fmtTime(t.timestamp)));
-      }
-      for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out); drawBottomBar("Remove from log history?", "");
-    }
-    process.stdout.removeListener("resize", onResize);
-    const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.on("resize", onCR); stdin.removeListener("data", onKey);
-    function onConfirm(k: string): void {
-      if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
+    const title = multi ? `DELETE ${targets.length} ENTRIES?` : "DELETE ENTRY?";
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+
+    showPopupInput(stdin, title, null, fullDraw,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
         removeOpsFromLog(new Set(targets.map(t => t.id)));
-        loadLog(); rawOps = getLog(); ops = sortLog(rawOps, currentSort);
-        selected.clear(); sel = Math.min(sel, Math.max(0, ops.length - 1)); adjustScroll();
-        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw(); return;
+        loadLog();
+        rawOps = getLog();
+        ops = sortLog(rawOps, currentSort);
+        selected.clear();
+        sel = Math.min(sel, Math.max(0, ops.length - 1));
+        adjustScroll();
+        fullDraw();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullDraw();
       }
-      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
-        process.stdout.on("resize", onResize); stdin.on("data", onKey); fullDraw();
-      }
-    }
-    stdin.on("data", onConfirm); clearScreen(); drawConfirm();
+    );
   }
 
   function showUndoError(errMsg: string): void {

@@ -3,6 +3,7 @@ import path from "path";
 import chalk from "chalk";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { deleteCommandEvents, deleteAllCommandEvents } from "./generalHistory";
+import { showPopupInput } from "./interactiveLs";
 
 export const HISTORY_FILE = path.join(process.env.HOME ?? "~", ".fsh_history");
 export const HISTORY_SIZE = 500;
@@ -177,35 +178,43 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
     cursor = Math.min(cursor, allRows.length - 1); adjustScroll(); render();
   }
 
+  function doDelete(): void {
+    if (!allRows.length) return;
+    const row = allRows[cursor];
+    if (row.kind === "header" && buckets[row.bucketIdx].entries.length === 0) return;
+
+    const targets = selected.size > 0 ? Array.from(selected) : (row.kind === "entry" ? [row.entry.cmd] : buckets[row.bucketIdx].entries.map(e => e.cmd));
+    if (!targets.length) return;
+
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    const title = selected.size > 0 ? `DELETE ${selected.size} ITEMS?` : (row.kind === "header" ? "DELETE BUCKET?" : "DELETE COMMAND?");
+
+    showPopupInput(stdin, title, null, render,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        deleteAtCursor();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      }
+    );
+  }
+
   function showConfirmDeleteAll(): void {
-    const total = totalCmds();
-    const confirmNav: NavItem[] = [
-      { key: "Y", label: `Delete all ${total} commands`, color: "red" },
-      { key: "N/Esc", label: "Cancel", color: "green" },
-    ];
-    function drawConfirm(): void {
-      const start = 3; const avail = R() - 3;
-      drawNavbar([confirmNav]); let out = ""; let ln = 0;
-      function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      const shown = buckets.flatMap(b => b.entries).slice(0, avail);
-      for (const e of shown) line(chalk.white("    " + (e.cmd.length > C() - 6 ? e.cmd.slice(0, C() - 7) + "…" : e.cmd)));
-      if (total > avail) line(chalk.gray(`    ... and ${total - avail} more`));
-      for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out); drawBottomBar(`${total} entries will be permanently deleted`, "");
-    }
-    process.stdout.removeListener("resize", onResize);
-    const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.on("resize", onCR); stdin.removeListener("data", onKey); clearScreen(); drawConfirm();
-    stdin.on("data", function onConfirm(k: string) {
-      if (k === "y" || k === "Y") {
-        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
-        buckets.forEach(b => { b.entries = []; }); deleteAllCommandEvents(); return exitClosed();
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showPopupInput(stdin, "DELETE ALL HISTORY?", null, render,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        buckets.forEach(b => { b.entries = []; });
+        deleteAllCommandEvents();
+        exitClosed();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
       }
-      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") {
-        stdin.removeListener("data", onConfirm); process.stdout.removeListener("resize", onCR);
-        process.stdout.on("resize", onResize); fullRedraw(); stdin.on("data", onKey);
-      }
-    });
+    );
   }
 
   function onResize(): void { fullRedraw(); }
@@ -217,7 +226,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
     if (raw === " ")  { toggleSelect(); render(); return; }
     if (raw === "a")  { selectAll(); render(); return; }
     if (raw === "d")  { showConfirmDeleteAll(); return; }
-    if (raw === "x" || raw === "\x7f") { deleteAtCursor(); return; }
+    if (raw === "x" || raw === "\x7f") { doDelete(); return; }
     if (raw === "\r") { const row = allRows[cursor]; if (row?.kind === "entry") exitSelected(row.entry.cmd); }
   }
   process.stdout.on("resize", onResize);

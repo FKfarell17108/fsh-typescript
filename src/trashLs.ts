@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { loadMeta, TrashEntry, restoreFromTrash, deleteFromTrash, deleteAllFromTrash, TRASH_DIR } from "./trash";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { TrashSort, DEFAULT_TRASH_SORT, trashSortLabel, showSortPicker } from "./sort";
+import { showPopupInput } from "./interactiveLs";
 
 function sortTrash(entries: TrashEntry[], sort: TrashSort): TrashEntry[] {
   const arr = [...entries];
@@ -181,57 +182,33 @@ export function interactiveTrash(onExit: () => void): void {
 
   function showConfirmDelete(targets: TrashEntry[], onBack: () => void): void {
     const multi = targets.length > 1;
-    const confirmNav: NavItem[] = [{ key: "Y", label: "Delete Forever (cannot undo)", color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
-    function drawConfirm(): void {
-      const start = 3; const avail = R() - 3;
-      drawNavbar([confirmNav]); let out = ""; let ln = 0;
-      function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      if (multi) {
-        line(chalk.bold(`  Delete ${targets.length} items forever`)); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-        for (const t of targets.slice(0, avail - 3)) line((t.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(t.name + (t.isDir ? "/" : "")));
-        if (targets.length > avail - 3) line(chalk.gray(`  ... and ${targets.length - (avail - 3)} more`));
-      } else {
-        const src = path.join(TRASH_DIR, targets[0].id);
-        line(chalk.bold((targets[0].isDir ? "  dir  " : "  file ") + targets[0].name + (targets[0].isDir ? "/" : ""))); line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-        if (targets[0].isDir) {
-          try { const ch = fs.readdirSync(src, { withFileTypes: true }); if (!ch.length) { line(chalk.gray("  (empty directory)")); } else { for (const c of ch.slice(0, avail - 3)) line((c.isDirectory() ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(c.name + (c.isDirectory() ? "/" : ""))); if (ch.length > avail - 3) line(chalk.gray(`  ... and ${ch.length - (avail - 3)} more`)); } } catch { line(chalk.red("  cannot read directory")); }
-        } else {
-          try { const fl = fs.readFileSync(src, "utf8").split("\n"); for (const f of fl.slice(0, avail - 3)) { const d = f.length > C() - 4 ? f.slice(0, C() - 5) + "…" : f; line(chalk.white("  " + d)); } if (fl.length > avail - 3) line(chalk.gray(`  ... ${fl.length - (avail - 3)} more lines`)); } catch { line(chalk.gray("  (binary file)")); }
-        }
+    const title = multi ? `DELETE ${targets.length} ITEMS FOREVER?` : "DELETE FOREVER?";
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showPopupInput(stdin, title, null, render,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        for (const t of targets) deleteFromTrash(t);
+        afterAction();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        onBack();
       }
-      for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out); drawBottomBar("Delete forever — cannot undo", "");
-    }
-    const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.removeListener("resize", onResize); process.stdout.on("resize", onCR); stdin.removeAllListeners("data");
-    function onConfirm(k: string): void {
-      if (k === "y" || k === "Y") { process.stdout.removeListener("resize", onCR); stdin.removeAllListeners("data"); for (const t of targets) deleteFromTrash(t); afterAction(); return; }
-      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") { process.stdout.removeListener("resize", onCR); stdin.removeAllListeners("data"); onBack(); }
-    }
-    stdin.on("data", onConfirm); clearScreen(); drawConfirm();
+    );
   }
 
   function showConfirmEmpty(): void {
-    const total = entries.length;
-    const confirmNav: NavItem[] = [{ key: "Y", label: `Empty Trash (${total} items)`, color: "red" }, { key: "N/Esc", label: "Cancel", color: "green" }];
-    function drawConfirm(): void {
-      const start = 3; const avail = R() - 3;
-      drawNavbar([confirmNav]); let out = ""; let ln = 0;
-      function line(s: string) { if (ln >= avail) return; out += at(start + ln, 1) + clr() + s; ln++; }
-      line(chalk.dim("─".repeat(Math.min(C() - 2, 60))));
-      for (const e of entries.slice(0, avail - 2)) line((e.isDir ? chalk.blue("  ▸ ") : chalk.gray("    ")) + chalk.white(e.name + (e.isDir ? "/" : "")));
-      if (entries.length > avail - 2) line(chalk.gray(`  ... and ${entries.length - (avail - 2)} more`));
-      for (let i = ln; i < avail; i++) out += at(start + i, 1) + clr();
-      w(out); drawBottomBar(`${total} items will be permanently deleted`, "");
-    }
-    process.stdout.removeListener("resize", onResize);
-    const onCR = () => { clearScreen(); drawConfirm(); };
-    process.stdout.on("resize", onCR); stdin.removeAllListeners("data");
-    function onConfirm(k: string): void {
-      if (k === "y" || k === "Y") { process.stdout.removeListener("resize", onCR); stdin.removeAllListeners("data"); deleteAllFromTrash(); exit(); return; }
-      if (k === "n" || k === "N" || k === "\u001b" || k === "\u0003") { process.stdout.removeListener("resize", onCR); stdin.removeAllListeners("data"); process.stdout.on("resize", onResize); stdin.on("data", onKey); fullRedraw(); }
-    }
-    stdin.on("data", onConfirm); clearScreen(); drawConfirm();
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
+    showPopupInput(stdin, "EMPTY TRASH?", null, render,
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        deleteAllFromTrash(); exit();
+      },
+      () => {
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      }
+    );
   }
 
   function showPreview(entry: TrashEntry): void {
