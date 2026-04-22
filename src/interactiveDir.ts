@@ -22,7 +22,7 @@ import {
   SPLIT_THRESHOLD, OVERLAY_LINES, previewLineColor,
   openImageWithFeh, closeImagePreview,
 } from "./preview";
-import { getGitDirStatus } from "./git";
+import { getGitDirStatus, getGitFileStatuses, GitFileStatuses, gitStatusColor } from "./git";
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "tiff", "tif"]);
 const VIDEO_EXTS = new Set(["mp4", "mkv", "webm", "mov", "avi", "flv", "wmv", "m4v"]);
@@ -112,6 +112,11 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   let searchActive = false;
   let searchQuery = "";
 
+  let gitStatuses: GitFileStatuses = new Map();
+  let gitStatusDir = "";
+
+  let previewPref: PreviewPref = "auto";
+
   const visibleEntries = () => {
     const base = showHidden ? allEntries : allEntries.filter(e => !e.hidden);
     return sortDirEntriesWithStat(base, currentSort, cwd);
@@ -129,7 +134,6 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   let selected = new Set<string>();
   let statusMsg = ""; let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
-  let previewPref: PreviewPref = "auto";
   const pvState: PreviewState = makePreviewState();
 
   let browseMode = false;
@@ -142,6 +146,15 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
 
   function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
   function effectiveListW(): number { return isSplit() ? listCols() : C(); }
+
+  function refreshGitStatuses(force = false): void {
+    if (!force && gitStatusDir === cwd) return;
+    gitStatusDir = cwd;
+    try { gitStatuses = getGitFileStatuses(cwd); }
+    catch { gitStatuses = new Map(); }
+  }
+
+  function cursorIsDir(): boolean { return true; }
 
   function scanRecursive(dir: string, depth: number): { name: string; hidden: boolean; relPath: string }[] {
     if (depth > 4) return [];
@@ -180,6 +193,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
 
   function reloadEntries(newCwd?: string, restoreName?: string): void {
     if (newCwd) cwd = newCwd;
+    refreshGitStatuses(true);
     allEntries = loadDirs(cwd);
     if (searchQuery) {
       entries = runSearch(searchQuery);
@@ -553,8 +567,9 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
         const { name, hidden } = entries[i];
         const isCursor = i === selIdx; const isSel = selected.has(name);
         const itemAction = isItemActive(name);
+        const gitStatus = gitStatuses.get(name);
         const dispName = name + "/";
-        const prefix = isSel ? "✓ " : "  ";
+        const prefix = "  ";
         const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
         const truncDisp = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
@@ -565,6 +580,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
         else if (isSel) line += chalk.magenta.bold(cell);
         else if (itemAction) line += cellActionStyle(itemAction, cell, hidden);
         else if (isBookmarked(path.join(cwd, name))) line += hidden ? chalk.hex("#FFD580")(cell) : chalk.hex("#FFD580").bold(cell);
+        else if (gitStatus) line += gitStatusColor(gitStatus)(cell);
         else if (hidden) line += chalk.cyan(cell);
         else line += chalk.blue.bold(cell);
         visCount += cWidth;

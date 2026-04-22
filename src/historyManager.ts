@@ -126,7 +126,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
       if (row.kind === "header") {
         const b      = buckets[row.bucketIdx];
         const allSel = b.entries.length > 0 && b.entries.every(e => selected.has(e.cmd));
-        const prefix = allSel ? "✓ " : "  ";
+        const prefix = "  ";
         const raw    = prefix + b.label + "  (" + b.entries.length + " commands)";
         if      (isActive && allSel) out += chalk.bgMagenta.white.bold(padOrTrim("  " + raw, cols));
         else if (isActive)           out += chalk.bgYellow.black.bold(padOrTrim("  " + raw, cols));
@@ -140,7 +140,7 @@ export function showHistoryManager(entries: HistoryEntry[], onDone: (result: His
         const leftW   = cols - timeLen - 2;
         const maxCmd  = leftW - 4;
         const display = cmd.length > maxCmd ? cmd.slice(0, maxCmd - 1) + "…" : cmd;
-        const rawLeft = (isSel ? "✓   " : "    ") + display;
+        const rawLeft = "    " + display;
 
         if      (isActive && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
         else if (isActive)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);

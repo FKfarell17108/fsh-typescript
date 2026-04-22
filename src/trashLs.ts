@@ -145,7 +145,7 @@ export function interactiveTrash(onExit: () => void): void {
       const nameMaxW = cols - 4;
       const rawName  = e.name + (e.isDir ? "/" : "");
       const name     = rawName.length > nameMaxW ? rawName.slice(0, nameMaxW - 1) + "…" : rawName;
-      const nameLine = (isSel ? "✓" : " ") + " " + icon + " " + name;
+      const nameLine = "  " + icon + " " + name;
 
       if (isCursor && isSel) {
         out += at(row1, 1) + chalk.bgMagenta.white.bold(padOrTrim(nameLine, cols));

@@ -126,7 +126,7 @@ function drawContentRows(rows: Row[], sel: number, scrollTop: number, vis: numbe
       const leftW   = cols - timeLen - 2;
       const maxLbl  = Math.max(8, leftW - 4 - tagRaw.length - 1);
       const lbl     = e.label.length > maxLbl ? e.label.slice(0, maxLbl - 1) + "…" : e.label;
-      const rawLeft = "  " + (isSel ? "✓ " : "  ") + tagRaw + lbl;
+      const rawLeft = "    " + tagRaw + lbl;
 
       if      (active && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(timeStr);
       else if (active)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(timeStr);
@@ -263,7 +263,7 @@ export function showGeneralHistory(onBack: () => void): void {
         const tagR   = isCmd ? "" : kindTagRaw(e.kind) + " ";
         const maxLbl = leftW - 4 - tagR.length;
         const lbl    = e.label.length > maxLbl ? e.label.slice(0, maxLbl - 1) + "…" : e.label;
-        const rawLeft = (isSel ? "✓   " : "    ") + tagR + lbl;
+        const rawLeft = "    " + tagR + lbl;
 
         if      (active && isSel) out += chalk.bgMagenta.white.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgMagenta.white.bold(ts);
         else if (active)          out += chalk.bgWhite.black.bold(padOrTrim(rawLeft, leftW) + "  ") + chalk.bgWhite.black.bold(ts);

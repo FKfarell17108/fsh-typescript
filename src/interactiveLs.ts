@@ -355,8 +355,8 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function isSplit(): boolean { return getPreviewMode(previewPref) === "split"; }
   function effectiveListW(): number { return isSplit() ? listCols() : C(); }
 
-  function refreshGitStatuses(): void {
-    if (gitStatusDir === currentDir) return;
+  function refreshGitStatuses(force = false): void {
+    if (!force && gitStatusDir === currentDir) return;
     gitStatusDir = currentDir;
     try { gitStatuses = getGitFileStatuses(currentDir); }
     catch { gitStatuses = new Map(); }
@@ -434,6 +434,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function reload(keepName?: string, resetIdx = true): void {
     loadAll();
+    refreshGitStatuses(true);
     if (searchQuery) {
       entries = runSearch(searchQuery);
     } else {
@@ -817,8 +818,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
         const itemAction = isItemActive(name);
         const gitStatus = gitStatuses.get(name);
         const dispName = searchQuery ? entries[i].name : displayName(name, isDir);
-        const badge = gitStatus ? gitStatusBadge(gitStatus) + " " : "  ";
-        const prefix = isSel ? "✓ " : badge;
+        const prefix = "  ";
         const maxNameW = Math.min(cWidth, lw - visCount) - prefix.length;
         if (maxNameW <= 0) break;
         const truncDisp = dispName.length > maxNameW ? dispName.slice(0, maxNameW - 1) + "…" : dispName;
