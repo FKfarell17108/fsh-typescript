@@ -321,12 +321,16 @@ function renderDirMeta(meta: DirMeta, width: number): string[] {
 
 export type PreviewState = {
   scrollTop: number;
+  scrollLeft: number;
+  cursorRow: number;
+  cursorCol: number;
+  isPreviewMode: boolean;
   path: string;
   content: PreviewContent | null;
 };
 
 export function makePreviewState(): PreviewState {
-  return { scrollTop: 0, path: "", content: null };
+  return { scrollTop: 0, scrollLeft: 0, cursorRow: 0, cursorCol: 0, isPreviewMode: false, path: "", content: null };
 }
 
 export function updatePreview(state: PreviewState, fullPath: string): void {
@@ -342,6 +346,9 @@ export function updatePreview(state: PreviewState, fullPath: string): void {
   state.path = fullPath;
   state.content = buildPreview(fullPath);
   state.scrollTop = 0;
+  state.scrollLeft = 0;
+  state.cursorRow = 0;
+  state.cursorCol = 0;
 }
 
 export function forceUpdatePreview(state: PreviewState, fullPath: string): void {
@@ -355,73 +362,157 @@ export function forceUpdatePreview(state: PreviewState, fullPath: string): void 
   state.path = fullPath;
   state.content = buildPreview(fullPath);
   state.scrollTop = 0;
+  state.scrollLeft = 0;
+  state.cursorRow = 0;
+  state.cursorCol = 0;
 }
 
-export function scrollPreview(state: PreviewState, delta: number, visLines: number): void {
+export function movePreviewCursor(state: PreviewState, dRow: number, dCol: number, visH: number, bodyW: number): void {
   if (!state.content) return;
-  const total = totalPreviewLines(state.content);
-  state.scrollTop = Math.max(0, Math.min(state.scrollTop + delta, Math.max(0, total - visLines)));
+  if (state.content.kind !== "text") {
+    if (dRow !== 0) state.scrollTop = Math.max(0, state.scrollTop + dRow);
+    return;
+  }
+  
+  const rawLines = state.content.lines;
+  
+  if (dCol !== 0) {
+    if (dCol > 0) {
+      const lineLen = rawLines[state.cursorRow]?.length ?? 0;
+      if (state.cursorCol + dCol > lineLen) {
+        if (state.cursorRow < rawLines.length - 1) {
+          state.cursorRow++;
+          state.cursorCol = 0;
+        } else {
+          state.cursorCol = lineLen;
+        }
+      } else {
+        state.cursorCol += dCol;
+      }
+    } else {
+      if (state.cursorCol + dCol < 0) {
+        if (state.cursorRow > 0) {
+          state.cursorRow--;
+          state.cursorCol = rawLines[state.cursorRow]?.length ?? 0;
+        } else {
+          state.cursorCol = 0;
+        }
+      } else {
+        state.cursorCol += dCol;
+      }
+    }
+  }
+
+  if (dRow !== 0) {
+    state.cursorRow = Math.max(0, Math.min(state.cursorRow + dRow, rawLines.length - 1));
+    const maxLen = rawLines[state.cursorRow]?.length ?? 0;
+    state.cursorCol = Math.min(state.cursorCol, maxLen);
+  }
+
+  // Sync scroll with cursor
+  if (state.cursorRow < state.scrollTop) {
+    state.scrollTop = state.cursorRow;
+  } else if (state.cursorRow >= state.scrollTop + visH) {
+    state.scrollTop = state.cursorRow - visH + 1;
+  }
+
+  if (state.cursorCol < state.scrollLeft) {
+    state.scrollLeft = state.cursorCol;
+  } else if (state.cursorCol >= state.scrollLeft + bodyW) {
+    state.scrollLeft = state.cursorCol - bodyW + 1;
+  }
 }
 
-function totalPreviewLines(content: PreviewContent): number {
-  if (content.kind === "text") return content.lines.length + 7;
-  if (content.kind === "binary") return 8;
-  if (content.kind === "dir") return content.entries.length + 8;
-  if (content.kind === "image") return 12;
-  return 1;
+export function getPreviewHeaderLength(content: PreviewContent): number {
+  if (content.kind === "text" || content.kind === "binary") return content.meta.ext ? 7 : 6;
+  if (content.kind === "dir") return 7;
+  if (content.kind === "image") return content.meta.ext ? 8 : 7;
+  return 0;
 }
 
-export function renderPreviewLines(state: PreviewState, width: number): string[] {
-  if (!state.content) return [chalk.dim("  no preview")];
-  return renderContent(state.content, width, state.path);
+export type RenderedPreview = { header: string[]; body: string[] };
+
+export function renderPreviewLines(state: PreviewState, width: number): RenderedPreview {
+  if (!state.content) return { header: [], body: [chalk.dim("  no preview")] };
+  return renderContent(state.content, width, state.path, state);
 }
 
-function renderContent(content: PreviewContent, width: number, fullPath: string): string[] {
-  if (content.kind === "empty") return [padLine(chalk.dim("  (nothing here)"), width)];
-  if (content.kind === "binary") return [padLine(chalk.dim("  binary file"), width), ...renderMeta(content.meta, width, fullPath)];
+function renderContent(content: PreviewContent, width: number, fullPath: string, state: PreviewState): RenderedPreview {
+  const scrollLeft = state.scrollLeft;
+  if (content.kind === "empty") return { header: [], body: [padLine(chalk.dim("  (nothing here)"), width)] };
+  if (content.kind === "binary") return { header: [padLine(chalk.dim("  binary file"), width), ...renderMeta(content.meta, width, fullPath)], body: [] };
 
   if (content.kind === "dir") {
-    const lines: string[] = [];
+    const header = [
+      padLine(chalk.blue.bold("  " + path.basename(fullPath) + "/"), width),
+      ...renderDirMeta(content.meta, width)
+    ];
+    const body: string[] = [];
     if (content.total === 0) {
-      lines.push(padLine(chalk.dim("  (empty directory)"), width));
-      return lines;
+      body.push(padLine(chalk.dim("  (empty directory)"), width));
+    } else {
+      for (const e of content.entries) {
+        const icon = e.isDir ? "▸ " : "  ";
+        const hidden = e.name.startsWith(".");
+        const nameC = e.isDir ? (hidden ? chalk.cyan : chalk.blue) : (hidden ? chalk.dim : chalk.white);
+        body.push(padLine("  " + (e.isDir ? chalk.blue(icon) : icon) + nameC(e.name), width));
+      }
     }
-    lines.push(padLine(chalk.blue.bold("  " + path.basename(fullPath) + "/"), width));
-    lines.push(...renderDirMeta(content.meta, width));
-
-    for (const e of content.entries) {
-      const icon = e.isDir ? "▸ " : "  ";
-      const hidden = e.name.startsWith(".");
-      const nameC = e.isDir ? (hidden ? chalk.cyan : chalk.blue) : (hidden ? chalk.dim : chalk.white);
-      lines.push(padLine("  " + (e.isDir ? chalk.blue(icon) : icon) + nameC(e.name), width));
-    }
-    return lines;
+    return { header, body };
   }
 
   if (content.kind === "image") {
-    const lines = [
+    const header = [
       padLine(chalk.blue.bold("  " + path.basename(fullPath)), width),
       ...renderMeta(content.meta, width, fullPath),
       padLine(chalk.dim(`  Dimensions: ${content.width}x${content.height}`), width)
     ];
-    return lines;
+    return { header, body: [] };
   }
 
   const { lines: rawLines, meta } = content;
   const colorFn = lineColor(meta.ext);
-  const out: string[] = [];
-  out.push(padLine(chalk.blue.bold("  " + path.basename(fullPath)), width));
-  out.push(...renderMeta(meta, width, fullPath));
+  const header = [
+    padLine(chalk.blue.bold("  " + path.basename(fullPath)), width),
+    ...renderMeta(meta, width, fullPath)
+  ];
 
+  const body: string[] = [];
   if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === "")) {
-    out.push(padLine(chalk.dim("  (empty file)"), width));
-    return out;
+    body.push(padLine(chalk.dim("  (empty file)"), width));
+    return { header, body };
   }
+
+  const numW = 5;
+  const bodyW = Math.max(1, width - numW);
   for (let i = 0; i < rawLines.length; i++) {
     const num = chalk.dim(String(i + 1).padStart(4) + " ");
-    out.push(padLine(num + colorFn(rawLines[i]), width));
+    const raw = rawLines[i];
+    
+    let visualLine = raw;
+    if (state.isPreviewMode && i === state.cursorRow && state.cursorCol >= visualLine.length) {
+      visualLine = visualLine.padEnd(state.cursorCol + 1, " ");
+    }
+    
+    let sliced = visualLine.slice(scrollLeft, scrollLeft + bodyW);
+    sliced = sliced.padEnd(bodyW, " ");
+
+    if (state.isPreviewMode && i === state.cursorRow) {
+      const c = state.cursorCol - scrollLeft;
+      if (c >= 0 && c < bodyW) {
+        const left = sliced.slice(0, c);
+        const char = sliced[c];
+        const right = sliced.slice(c + 1);
+        const coloredLine = colorFn(left) + chalk.bgWhite.black(char) + colorFn(right);
+        body.push(num + coloredLine);
+      } else {
+        body.push(num + colorFn(sliced));
+      }
+    } else {
+      body.push(num + colorFn(sliced));
+    }
   }
-  return out;
+  return { header, body };
 }
 
 export function drawSplitPreview(
@@ -436,14 +527,24 @@ export function drawSplitPreview(
   const visH = Math.max(1, endR - startR + 1);
   const divCol = listW + 1;
 
-  const lines = browseIdx !== undefined && state.content?.kind === "dir"
-    ? buildBrowseLines(state.content, browseIdx, pvW, state.path)
+  const rendered = browseIdx !== undefined && state.content?.kind === "dir"
+    ? buildBrowseLines(state, browseIdx, pvW, state.path)
     : renderPreviewLines(state, pvW);
 
+  const bodyVisH = Math.max(0, visH - rendered.header.length);
+  const maxScroll = Math.max(0, rendered.body.length - bodyVisH);
+  state.scrollTop = Math.max(0, Math.min(state.scrollTop, maxScroll));
+
   let out = "";
-  for (let i = 0; i < visH; i++) {
-    const line = lines[state.scrollTop + i] ?? "";
-    out += at(startR + i, divCol) + chalk.dim("│") + padLine(line, pvW);
+  let r = 0;
+  for (let i = 0; i < rendered.header.length && r < visH; i++) {
+    out += at(startR + r, divCol) + chalk.dim("│") + padLine(rendered.header[i], pvW);
+    r++;
+  }
+  for (let i = 0; r < visH; i++) {
+    const line = rendered.body[state.scrollTop + i] ?? " ".repeat(pvW);
+    out += at(startR + r, divCol) + chalk.dim("│") + padLine(line, pvW);
+    r++;
   }
   w(out);
 }
@@ -457,29 +558,43 @@ export function drawOverlayPreview(
   const startR = R() - OVERLAY_LINES - 1;
   const visH = OVERLAY_LINES;
 
-  const lines = browseIdx !== undefined && state.content?.kind === "dir"
-    ? buildBrowseLines(state.content, browseIdx, cols - 2, state.path)
+  const rendered = browseIdx !== undefined && state.content?.kind === "dir"
+    ? buildBrowseLines(state, browseIdx, cols - 2, state.path)
     : renderPreviewLines(state, cols - 2);
+
+  const bodyVisH = Math.max(0, visH - rendered.header.length);
+  const maxScroll = Math.max(0, rendered.body.length - bodyVisH);
+  state.scrollTop = Math.max(0, Math.min(state.scrollTop, maxScroll));
 
   let out = "";
   out += at(startR, 1) + chalk.dim("─".repeat(cols));
-  for (let i = 0; i < visH; i++) {
-    const line = lines[state.scrollTop + i] ?? "";
-    out += at(startR + 1 + i, 1) + " " + padLine(line, cols - 2) + " ";
+  let r = 0;
+  for (let i = 0; i < rendered.header.length && r < visH; i++) {
+    out += at(startR + 1 + r, 1) + " " + padLine(rendered.header[i], cols - 2) + " ";
+    r++;
+  }
+  for (let i = 0; r < visH; i++) {
+    const line = rendered.body[state.scrollTop + i] ?? " ".repeat(cols - 2);
+    out += at(startR + 1 + r, 1) + " " + padLine(line, cols - 2) + " ";
+    r++;
   }
   w(out);
 }
 
-export function buildBrowseLines(content: PreviewContent, browseIdx: number, width: number, fullPath: string): string[] {
-  if (content.kind !== "dir") return renderContent(content, width, fullPath);
-  const lines: string[] = [];
-  if (content.total === 0) {
-    lines.push(padLine(chalk.dim("  (empty directory)"), width));
-    return lines;
-  }
+export function buildBrowseLines(state: PreviewState, browseIdx: number, width: number, fullPath: string): RenderedPreview {
+  const content = state.content!;
+  if (content.kind !== "dir") return renderContent(content, width, fullPath, state);
+  
+  const header = [
+    padLine(chalk.blue.bold("  " + path.basename(fullPath) + "/"), width),
+    ...renderDirMeta(content.meta, width)
+  ];
 
-  lines.push(padLine(chalk.blue.bold("  " + path.basename(fullPath) + "/"), width));
-  lines.push(...renderDirMeta(content.meta, width));
+  const body: string[] = [];
+  if (content.total === 0) {
+    body.push(padLine(chalk.dim("  (empty directory)"), width));
+    return { header, body };
+  }
 
   for (let i = 0; i < content.entries.length; i++) {
     const e = content.entries[i];
@@ -490,13 +605,13 @@ export function buildBrowseLines(content: PreviewContent, browseIdx: number, wid
 
     if (isCur) {
       const raw = "  " + icon + e.name;
-      lines.push(chalk.bgWhite.black.bold(padLine(raw, width)));
+      body.push(chalk.bgWhite.black.bold(padLine(raw, width)));
     } else {
       const coloredIcon = e.isDir ? chalk.blue(icon) : icon;
-      lines.push(padLine("  " + coloredIcon + nameC(e.name), width));
+      body.push(padLine("  " + coloredIcon + nameC(e.name), width));
     }
   }
-  return lines;
+  return { header, body };
 }
 
 export function getDirEntries(content: PreviewContent): DirEntry[] {

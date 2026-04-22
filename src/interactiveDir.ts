@@ -16,7 +16,7 @@ import {
 import {
   PreviewPref, PreviewState,
   getPreviewMode, listCols,
-  makePreviewState, updatePreview, forceUpdatePreview, scrollPreview,
+  makePreviewState, updatePreview, forceUpdatePreview, movePreviewCursor, getPreviewHeaderLength,
   drawSplitPreview, drawOverlayPreview,
   getDirEntries, getMetaLineCount,
   SPLIT_THRESHOLD, OVERLAY_LINES, previewLineColor,
@@ -136,6 +136,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   let browseIdx = 0;
   let browseStack: { path: string; idx: number; scrollTop: number }[] = [];
   let fehOpen = false;
+  let previewMode = false;
 
   let moveModePending: { srcPaths: string[]; srcNames: string[]; label: string } | null = null;
 
@@ -221,7 +222,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     return null;
   }
 
-  function NR(): number { return browseMode ? 2 : moveModePending ? 2 : 3; }
+  function NR(): number { return browseMode || previewMode ? 2 : moveModePending ? 2 : 3; }
 
   function NAV(): NavRows {
     const cb = getClipboard() as any;
@@ -238,6 +239,12 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
         { key: "Nav", label: "Navigate" },
         { key: "Ent", label: entLabelBrowse },
         { key: "Tab", label: "Parent" },
+        { key: "Esc", label: "Back" },
+      ]];
+    }
+    if (previewMode) {
+      return [[
+        { key: "Nav", label: "Navigate" },
         { key: "Esc", label: "Back" },
       ]];
     }
@@ -287,13 +294,27 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     clearScreen(); render();
   }
 
+  function enterPreviewMode(): void {
+    if (!pvState.content || pvState.content.kind !== "text") return;
+    previewMode = true;
+    pvState.isPreviewMode = true;
+    clearScreen(); render();
+  }
+
+  function exitPreviewMode(): void {
+    previewMode = false;
+    pvState.isPreviewMode = false;
+    pvState.scrollLeft = 0;
+    clearScreen(); render();
+  }
+
   function syncBrowseScroll(): void {
-    const metaLines = getMetaLineCount(pvState.content!);
-    const totalOffset = 1 + metaLines;
     const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
-    const targetLine = totalOffset + browseIdx;
+    const headerLines = 7;
+    const bodyVisH = Math.max(1, visH - headerLines);
+    const targetLine = browseIdx;
     if (targetLine < pvState.scrollTop) pvState.scrollTop = targetLine;
-    if (targetLine >= pvState.scrollTop + visH) pvState.scrollTop = targetLine - visH + 1;
+    if (targetLine >= pvState.scrollTop + bodyVisH) pvState.scrollTop = targetLine - bodyVisH + 1;
   }
 
   function browseNavigate(delta: number): void {
@@ -319,6 +340,10 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
         fehOpen = true;
         drawNavbar(NAV());
         drawBottom();
+        return;
+      }
+      if (VIDEO_EXTS.has(ext)) {
+        showVideoNotSupportedPopup();
         return;
       }
       showEditorPickerStandalone(
@@ -430,7 +455,9 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     const mode = getPreviewMode(previewPref);
     const modeStr = browseMode
       ? chalk.cyan(" [browse]")
-      : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
+      : previewMode
+        ? chalk.cyan(" [preview]")
+        : chalk.dim(mode === "split" ? " [split]" : " [overlay]");
     const pgHint = pvState.content
       ? "  " + chalk.white.bold("[") + chalk.cyan.bold("PgUp/PgDn") + chalk.white.bold("]") + chalk.dim(" Scroll")
       : "";
@@ -443,7 +470,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   }
 
   function drawMiniBar(): void {
-    if (browseMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
+    if (browseMode || previewMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
     const cols = C();
 
     if (searchActive) {
@@ -1087,6 +1114,42 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     );
   }
 
+  function showVideoNotSupportedPopup(): void {
+    function drawPopup(): void {
+      render();
+      const cols = C(); const rows = R();
+      const msg = "Opening video files is not yet supported.";
+      const popupW = Math.min(cols - 8, Math.max(msg.length + 6, 48));
+      const popupH = 7;
+      const startY = Math.floor((rows - popupH) / 2);
+      const startX = Math.floor((cols - popupW) / 2);
+      const borderCol = chalk.gray;
+      const bgSpace = " ".repeat(popupW - 2);
+      w(at(startY, startX) + borderCol("┏" + "━".repeat(popupW - 2) + "┓"));
+      for (let r = 1; r < popupH - 1; r++) w(at(startY + r, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+      w(at(startY + popupH - 1, startX) + borderCol("┗" + "━".repeat(popupW - 2) + "┛"));
+      const header = " Video Not Supported ";
+      w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.yellow(header));
+      w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
+      w(at(startY + 3, startX + Math.floor((popupW - msg.length) / 2)) + chalk.white(msg));
+      const okLabel = "  Press any key to dismiss  ";
+      w(at(startY + 5, startX + Math.floor((popupW - okLabel.length) / 2)) + chalk.dim(okLabel));
+    }
+    const onPR = () => drawPopup();
+    process.stdout.removeListener("resize", onResize);
+    process.stdout.on("resize", onPR);
+    stdin.removeListener("data", onKey);
+    function onPopupKey(_k: string): void {
+      stdin.removeListener("data", onPopupKey);
+      process.stdout.removeListener("resize", onPR);
+      process.stdout.on("resize", onResize);
+      stdin.on("data", onKey);
+      fullRedraw();
+    }
+    stdin.on("data", onPopupKey);
+    drawPopup();
+  }
+
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
@@ -1110,6 +1173,21 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
       if (k === "\u001b[6~") { browseNavigate(5); return; }
       if (k === "\t") { browseParent(); return; }
       if (k === "\r") { browseEnter(); return; }
+      if (k === "o" && pvState.content?.kind === "text") { enterPreviewMode(); return; }
+      return;
+    }
+    if (previewMode) {
+      if (k === "\u0003") { exitPreviewMode(); process.chdir(cwd); exit(); return; }
+      if (k === "\u001b" || k === "q") { exitPreviewMode(); return; }
+      const pvW = isSplit() ? C() - listCols() - 1 : C() - 2;
+      const bodyW = Math.max(1, pvW - 5);
+      const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
+      const headerLines = getPreviewHeaderLength(pvState.content!);
+      const bodyVisH = Math.max(1, visH - headerLines);
+      if (k === "\u001b[A") { movePreviewCursor(pvState, -1, 0, bodyVisH, bodyW); renderPreview(); drawNavbar(NAV()); drawBottom(); return; }
+      if (k === "\u001b[B") { movePreviewCursor(pvState, 1, 0, bodyVisH, bodyW); renderPreview(); drawNavbar(NAV()); drawBottom(); return; }
+      if (k === "\u001b[D") { movePreviewCursor(pvState, 0, -1, bodyVisH, bodyW); renderPreview(); drawNavbar(NAV()); drawBottom(); return; }
+      if (k === "\u001b[C") { movePreviewCursor(pvState, 0, 1, bodyVisH, bodyW); renderPreview(); drawNavbar(NAV()); drawBottom(); return; }
       return;
     }
     if (moveModePending) {
@@ -1121,8 +1199,14 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
       }
       if (k === "\t") { goUp(); return; }
       if (k === ".") { toggleHidden(); return; }
-      if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
-      if (k === "\u001b[6~") { scrollPreview(pvState, 5, vis()); renderPreview(); drawBottom(); return; }
+      if (k === "\u001b[5~" || k === "\u001b[6~") {
+        const pvW = isSplit() ? C() - listCols() - 1 : C() - 2;
+        const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
+        const headerLines = getPreviewHeaderLength(pvState.content!);
+        const bodyVisH = Math.max(1, visH - headerLines);
+        movePreviewCursor(pvState, k === "\u001b[5~" ? -5 : 5, 0, bodyVisH, Math.max(1, pvW - 5));
+        renderPreview(); drawBottom(); return;
+      }
       if (navigate(k)) render();
       return;
     }
@@ -1155,8 +1239,14 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     if (k === "r") { doRename(); return; }
     if (k === "m") { doMoveInit(); return; }
     if (k === "d" || k === "D") { if (entries.length) showDeleteConfirm(); return; }
-    if (k === "\u001b[5~") { scrollPreview(pvState, -5, vis()); renderPreview(); drawBottom(); return; }
-    if (k === "\u001b[6~") { scrollPreview(pvState, 5, vis()); renderPreview(); drawBottom(); return; }
+    if (k === "\u001b[5~" || k === "\u001b[6~") {
+      const pvW = isSplit() ? C() - listCols() - 1 : C() - 2;
+      const visH = isSplit() ? Math.max(1, R() - NR() - 3 - 1) : Math.max(1, OVERLAY_LINES - 1);
+      const headerLines = getPreviewHeaderLength(pvState.content!);
+      const bodyVisH = Math.max(1, visH - headerLines);
+      movePreviewCursor(pvState, k === "\u001b[5~" ? -5 : 5, 0, bodyVisH, Math.max(1, pvW - 5));
+      renderPreview(); drawBottom(); return;
+    }
     if (navigate(k)) render();
   }
 
