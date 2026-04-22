@@ -1,4 +1,4 @@
-# FSH (FK Shell) v2.1.3
+# FSH (FK Shell) v2.2.0
 
 > A custom Unix shell, developed using TypeScript, and designed specifically for FK Universe to deliver a unique terminal experience.
 
@@ -13,6 +13,69 @@
 ---
 
 ## Changelog
+
+### v2.2.0 - Minor
+
+#### Interactive File Preview
+- **Editor-like Cursor Navigation** - Text files can now be interactively previewed (`O: Browse`) in `ls` and `dir`. Entering preview mode introduces a cursor that can navigate the content with full line wrapping and edge-bound horizontal scrolling.
+
+---
+
+### v2.1.10 - Patch
+
+#### Preview Navbar & Keybindings
+- **Simplified Navbar** - When navigating within a file preview, the navbar is simplified (`Nav: Navigate` and `Esc: Back`) for a cleaner interface.
+- **Removed Scrolling Overlaps** - `PgUp/PgDn` bindings have been removed from the preview mode to prevent unintended leaps, prioritizing strict cursor-based navigation.
+
+---
+
+### v2.1.9 - Patch
+
+#### Media Handling & Sticky Headers
+- **Sticky Preview Headers** - The file and directory metadata headers in the preview panel are now fixed ("sticky") at the top, preventing metadata from disappearing when scrolling.
+- **Video Media Handling** - Selecting a video file now triggers a "Video Not Supported" overlay popup instead of opening the generic editor picker, avoiding file corruption.
+
+---
+
+### v2.1.8 - Patch
+
+#### Modal Overlays: Trash Confirmation
+- **Centered Trash Overlay** - The confirmation dialog for moving items to the trash in `ls` and `dir` is now presented as a clean, centered overlay popup instead of a bottom prompt.
+- **Trash Preview Context** - When confirming a deletion, the background now clearly highlights the file or directory being deleted to provide better visual context.
+
+---
+
+### v2.1.7 - Patch
+
+#### Modal Overlays: Editor Selection
+- **Centered Editor Picker** - The "Choose Editor" prompt is now presented as a centered overlay popup across the filesystem browsers (`ls` and `dir`).
+
+---
+
+### v2.1.6 - Patch
+
+#### System & New Builtins
+- **`fsh` Command** - Added a new builtin command that displays general information about the FSH (FK Shell) environment.
+- **`cls` Command** - Added as an alias command for `clear` to quickly clear the terminal screen.
+- **Dynamic Versioning** - Version parsing is now dynamic, reading directly from `package.json` for builtins and terminal outputs.
+
+---
+
+### v2.1.5 - Patch
+
+#### Internal Refactoring
+- **`fshrc` Reloading Refactor** - Improved and standardized the internal reloading logic for `.fshrc` and builtin callback handlers to ensure smoother updates.
+
+---
+
+### v2.1.4 - Patch
+
+#### UI Polishing & Neofetch
+- **Neofetch Enhancements** - Modified the builtin `neofetch` UI for better aesthetics.
+- **Navigation Labels** - Simplified navigation labels and `Esc` key logic in browse mode.
+- **Header Visibility** - Improved preview header and metadata visibility in the split pane.
+
+---
 
 ### v2.1.3 - Patch
 
