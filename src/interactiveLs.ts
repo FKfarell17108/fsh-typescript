@@ -64,27 +64,112 @@ export function getInstalledEditors(): string[] {
 
 export type LsResult = { kind: "quit" } | { kind: "open"; editor: string; file: string };
 
-export function showInlineInput(stdin: NodeJS.ReadStream, label: string, defVal: string, onSubmit: (v: string) => void, onCancel: () => void): void {
+export function showPopupInput(
+  stdin: NodeJS.ReadStream,
+  label: string,
+  defVal: string,
+  renderBg: () => void,
+  onSubmit: (v: string) => void,
+  onCancel: () => void,
+  onChange?: (v: string) => void
+): void {
   let value = defVal; let cursor = value.length;
+  let focus: "input" | "yes" | "no" = "input";
+
   function draw() {
-    const cols = C(); const inputRow = R();
-    const prompt = ` ${label} `; const cursorCol = prompt.length + cursor + 1;
-    w(at(inputRow, 1) + clr() + chalk.bgBlack.white(padOrTrim(prompt + value, cols)));
-    w(`\x1b[${inputRow};${cursorCol}H\x1b[?25h`);
+    renderBg();
+    const cols = C(); const rows = R();
+    const popupW = Math.min(cols - 10, 48);
+    const popupH = 8;
+    const startY = Math.floor((rows - popupH) / 2);
+    const startX = Math.floor((cols - popupW) / 2);
+
+    const borderCol = chalk.gray;
+    const bgSpace = " ".repeat(popupW - 2);
+    w(at(startY, startX) + borderCol("┏" + "━".repeat(popupW - 2) + "┓"));
+    for (let i = 1; i < popupH - 1; i++) w(at(startY + i, startX) + borderCol("┃") + bgSpace + borderCol("┃"));
+    w(at(startY + popupH - 1, startX) + borderCol("┗" + "━".repeat(popupW - 2) + "┛"));
+
+    const header = ` ${label.toUpperCase()} `;
+    w(at(startY + 1, startX + Math.floor((popupW - header.length) / 2)) + chalk.bold.white(header));
+    w(at(startY + 2, startX + 2) + chalk.dim("─".repeat(popupW - 4)));
+
+    const inputW = popupW - 8;
+    let dispValue = value;
+    let dispCursor = cursor;
+    if (value.length > inputW) {
+      const start = Math.max(0, cursor - Math.floor(inputW / 2));
+      dispValue = value.slice(start, start + inputW);
+      dispCursor = cursor - start;
+      if (start > 0) { dispValue = "…" + dispValue.slice(1); }
+      if (start + inputW < value.length) { dispValue = dispValue.slice(0, -1) + "…"; }
+    }
+
+    const inputPrefix = focus === "input" ? chalk.cyan.bold("> ") : chalk.dim("> ");
+    const inputText = focus === "input" ? chalk.white(dispValue.padEnd(inputW, " ")) : chalk.gray(dispValue.padEnd(inputW, " "));
+    w(at(startY + 4, startX + 3) + inputPrefix + inputText);
+
+    const yesLabel = "  Yes  ";
+    const noLabel = "  No  ";
+    const yesStyled = focus === "yes" ? chalk.bgWhite.black.bold(yesLabel) : chalk.green(yesLabel);
+    const noStyled = focus === "no" ? chalk.bgWhite.black.bold(noLabel) : chalk.red(noLabel);
+    
+    const footer = yesStyled + "     " + noStyled;
+    w(at(startY + 6, startX + Math.floor((popupW - visibleLen(footer)) / 2)) + footer);
+
+
+    if (focus === "input") {
+      const cursorCol = startX + 5 + dispCursor;
+      const cursorRow = startY + 4;
+      w(`\x1b[${cursorRow};${cursorCol}H\x1b[?25h`);
+    } else {
+      w("\x1b[?25l");
+    }
   }
+
   function onResize() { draw(); }
   process.stdout.on("resize", onResize); draw();
-  function cleanup() { process.stdout.removeListener("resize", onResize); w("\x1b[?25l" + at(R(), 1) + clr()); stdin.removeListener("data", onData); }
+  function cleanup() {
+    process.stdout.removeListener("resize", onResize);
+    w("\x1b[?25l");
+    stdin.removeListener("data", onData);
+  }
   function onData(raw: string) {
-    if (raw === "\r" || raw === "\n") { cleanup(); onSubmit(value.trim()); return; }
-    if (raw === "\u0003" || raw === "\u001b") { cleanup(); onCancel(); return; }
-    if (raw === "\u001b[C") { if (cursor < value.length) { cursor++; draw(); } return; }
-    if (raw === "\u001b[D") { if (cursor > 0) { cursor--; draw(); } return; }
-    if (raw === "\u001b[H" || raw === "\u0001") { cursor = 0; draw(); return; }
-    if (raw === "\u001b[F" || raw === "\u0005") { cursor = value.length; draw(); return; }
-    if (raw === "\u001b[3~") { if (cursor < value.length) { value = value.slice(0, cursor) + value.slice(cursor + 1); draw(); } return; }
-    if (raw === "\x7f" || raw === "\u0008") { if (cursor > 0) { value = value.slice(0, cursor - 1) + value.slice(cursor); cursor--; draw(); } return; }
-    if (raw.length === 1 && raw.charCodeAt(0) >= 32) { value = value.slice(0, cursor) + raw + value.slice(cursor); cursor++; draw(); }
+    if (raw === "\u0003") { cleanup(); onCancel(); return; }
+    
+    if (focus === "input") {
+      if (raw === "\r" || raw === "\n") { cleanup(); onSubmit(value.trim()); return; }
+      if (raw === "\u001b") { cleanup(); onCancel(); return; }
+      if (raw === "\t" || raw === "\u001b[B") { focus = "yes"; draw(); return; }
+      if (raw === "\u001b[C") { if (cursor < value.length) { cursor++; draw(); } return; }
+      if (raw === "\u001b[D") { if (cursor > 0) { cursor--; draw(); } return; }
+      if (raw === "\u001b[H" || raw === "\u0001") { cursor = 0; draw(); return; }
+      if (raw === "\u001b[F" || raw === "\u0005") { cursor = value.length; draw(); return; }
+      if (raw === "\u001b[3~") { if (cursor < value.length) { value = value.slice(0, cursor) + value.slice(cursor + 1); if (onChange) onChange(value); draw(); } return; }
+      if (raw === "\x7f" || raw === "\u0008") { if (cursor > 0) { value = value.slice(0, cursor - 1) + value.slice(cursor); cursor--; if (onChange) onChange(value); draw(); } return; }
+      if (raw.length === 1 && raw.charCodeAt(0) >= 32) { value = value.slice(0, cursor) + raw + value.slice(cursor); cursor++; if (onChange) onChange(value); draw(); }
+    } else {
+      if (raw === "\r" || raw === "\n") {
+        cleanup();
+        if (focus === "yes") onSubmit(value.trim());
+        else onCancel();
+        return;
+      }
+      if (raw === "\u001b") { cleanup(); onCancel(); return; }
+      if (raw === "\u001b[A") { focus = "input"; draw(); return; }
+      if (raw === "\u001b[C" || raw === "\t") {
+        if (focus === "yes") focus = "no";
+        else focus = "input";
+        draw();
+        return;
+      }
+      if (raw === "\u001b[D") {
+        if (focus === "no") focus = "yes";
+        else focus = "input";
+        draw();
+        return;
+      }
+    }
   }
   stdin.on("data", onData);
 }
@@ -410,6 +495,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
           : "Open";
       return [[
         { key: "Nav", label: "Navigate" },
+        { key: "Spc", label: "Select Dir" },
         { key: "Ent", label: entLabelBrowse },
         { key: "Tab", label: "Parent" },
         { key: "Esc", label: "Back" },
@@ -480,6 +566,16 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     pvState.isPreviewMode = false;
     pvState.scrollLeft = 0;
     clearScreen(); render();
+  }
+  
+  function browseSelectDir(): void {
+    const targetDir = pvState.path;
+    exitBrowse();
+    currentDir = targetDir;
+    process.chdir(currentDir);
+    gitStatusDir = "";
+    reload();
+    fullRedraw();
   }
 
   function syncBrowseScroll(): void {
@@ -609,15 +705,24 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function buildLeft(): string {
     const home = process.env.HOME ?? "";
     const rel = currentDir.startsWith(home) ? "~" + currentDir.slice(home.length) : currentDir;
+    let s = chalk.dim(rel);
+    if (searchQuery) {
+      const sel = entries[selIdx];
+      if (sel) {
+        s += chalk.dim("/" + sel.name);
+      } else {
+        s += chalk.dim("/" + searchQuery);
+      }
+    }
+
     const dirs = entries.filter(e => e.isDir).length;
     const files = entries.length - dirs;
     const hidC = allEntries.filter(e => e.name.startsWith(".")).length;
-    let s = chalk.dim(rel);
+
     if (dirs) s += chalk.dim(`  ${dirs}d`);
     if (files) s += chalk.dim(`  ${files}f`);
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
-    if (searchQuery) s += chalk.cyan(`  /${searchQuery}`);
     const al = getActiveActionLabel();
     if (al) s += "    " + al;
     s += "    " + buildGitStatus();
@@ -643,12 +748,6 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function drawMiniBar(): void {
     if (browseMode || previewMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
     const cols = C();
-
-    if (searchActive) {
-      const line = "  " + chalk.bgBlack.cyan.bold(" search ") + " " + chalk.white(searchQuery) + chalk.dim("█") + "    " + chalk.dim("Esc") + chalk.dim(" clear  ") + chalk.dim("Enter") + chalk.dim(" confirm");
-      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + " ".repeat(Math.max(0, cols - visibleLen(line))));
-      return;
-    }
 
     const searchHint = searchQuery
       ? chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + " " + chalk.cyan.bold(searchQuery)
@@ -813,7 +912,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
     if (selected.size > 1) { showStatus("  rename: select one item at a time", true); return; }
     const e = entries[selIdx]; const full = path.join(currentDir, e.name);
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "Rename:", e.name,
+    showPopupInput(stdin, "Rename:", e.name, render,
       (newName) => {
         process.stdout.on("resize", onResize);
         if (!newName || newName === e.name) { fullRedraw(); stdin.on("data", onKey); return; }
@@ -834,39 +933,26 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   }
 
   function openSearch(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     searchActive = true;
-    drawMiniBar();
-  }
-
-  function handleSearchKey(key: string): void {
-    if (key === "\u001b" || key === "\u0003") {
-      searchActive = false;
-      if (searchQuery) { searchQuery = ""; reload(); }
-      fullRedraw();
-      return;
-    }
-    if (key === "\r") {
-      searchActive = false;
-      fullRedraw();
-      return;
-    }
-    if (key === "\x7f" || key === "\u0008") {
-      if (searchQuery.length > 0) {
-        searchQuery = searchQuery.slice(0, -1);
+    showPopupInput(stdin, "Search:", searchQuery, render,
+      (val) => {
+        searchActive = false;
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      },
+      () => {
+        searchActive = false; searchQuery = "";
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      },
+      (val) => {
+        searchQuery = val;
         entries = searchQuery ? runSearch(searchQuery) : visible();
         selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
-        drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+        render();
       }
-      return;
-    }
-    if (navigate(key)) { drawContent(); renderPreview(); drawBottom(); return; }
-    if (key.length === 1 && key >= " ") {
-      searchQuery += key;
-      entries = runSearch(searchQuery);
-      selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
-      drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
-      return;
-    }
+    );
   }
 
   function showDeleteConfirm(): void {
@@ -1483,7 +1569,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function doMkdir(): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "New folder:", "",
+    showPopupInput(stdin, "New folder:", "", render,
       (name) => {
         process.stdout.on("resize", onResize);
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
@@ -1499,7 +1585,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
 
   function doTouch(): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "New file:", "",
+    showPopupInput(stdin, "New file:", "", render,
       (name) => {
         process.stdout.on("resize", onResize);
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
@@ -1593,7 +1679,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
-    if (searchActive) { handleSearchKey(k); return; }
+    if (searchActive) return;
 
     if (browseMode) {
       if (k === "\u0003") { exitBrowse(); onQuit(); return; }
@@ -1613,6 +1699,7 @@ function runBrowser(startDir: string, stdin: NodeJS.ReadStream, onQuit: () => vo
       if (k === "\u001b[6~") { browseNavigate(5); return; }
       if (k === "\t") { browseParent(); return; }
       if (k === "\r") { browseEnter(); return; }
+      if (k === " ") { browseSelectDir(); return; }
       if (k === "o" && pvState.content?.kind === "text") { enterPreviewMode(); return; }
       return;
     }

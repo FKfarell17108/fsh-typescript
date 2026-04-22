@@ -6,7 +6,7 @@ import { moveToTrash } from "./trash";
 import { w, at, clr, C, R, drawNavbar, NavItem, NavRows, drawBottomBar, enterAlt, exitAlt, clearScreen, visibleLen, padOrTrim } from "./tui";
 import { getClipboard, setClipboard, clearClipboard, execCopy, execMove, execRename, uniqueDest, loadLog } from "./fileOps";
 import { showFileOpsLog } from "./fileOpsLog";
-import { showInlineInput, showEditorPickerStandalone, LsResult } from "./interactiveLs";
+import { showPopupInput, showEditorPickerStandalone, LsResult } from "./interactiveLs";
 import { loadBookmarks, toggleBookmark, isBookmarked } from "./bookmarks";
 import { showBookmarkPicker } from "./bookmarkPicker";
 import {
@@ -237,6 +237,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
           : "Open";
       return [[
         { key: "Nav", label: "Navigate" },
+        { key: "Spc", label: "Select Dir" },
         { key: "Ent", label: entLabelBrowse },
         { key: "Tab", label: "Parent" },
         { key: "Esc", label: "Back" },
@@ -306,6 +307,15 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     pvState.isPreviewMode = false;
     pvState.scrollLeft = 0;
     clearScreen(); render();
+  }
+  
+  function browseSelectDir(): void {
+    const targetDir = pvState.path;
+    exitBrowse();
+    cwd = targetDir;
+    process.chdir(cwd);
+    reloadEntries(cwd);
+    fullRedraw();
   }
 
   function syncBrowseScroll(): void {
@@ -439,12 +449,20 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   function buildLeft(): string {
     const home = process.env.HOME ?? "";
     const rel = cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
-    const hidC = allEntries.filter(e => e.hidden).length;
     let s = chalk.dim(rel);
+    if (searchQuery) {
+      const sel = entries[selIdx];
+      if (sel) {
+        s += chalk.dim("/" + sel.name);
+      } else {
+        s += chalk.dim("/" + searchQuery);
+      }
+    }
+
+    const hidC = allEntries.filter(e => e.hidden).length;
     s += chalk.dim(`  ${entries.length}d`);
     if (!showHidden && hidC) s += chalk.dim(`  ${hidC} hidden`);
     if (selected.size) s += chalk.magenta(`  ${selected.size} sel`);
-    if (searchQuery) s += chalk.cyan(`  /${searchQuery}`);
     const al = getActiveActionLabel();
     if (al) s += "    " + al;
     s += "    " + buildGitStatus();
@@ -472,12 +490,6 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   function drawMiniBar(): void {
     if (browseMode || previewMode || moveModePending) { w(at(R() - 1, 1) + "\x1b[2K\x1b[0m"); return; }
     const cols = C();
-
-    if (searchActive) {
-      const line = "  " + chalk.bgBlack.cyan.bold(" search ") + " " + chalk.white(searchQuery) + chalk.dim("█") + "    " + chalk.dim("Esc") + chalk.dim(" clear  ") + chalk.dim("Enter") + chalk.dim(" confirm");
-      w(at(R() - 1, 1) + "\x1b[2K\x1b[0m" + line + " ".repeat(Math.max(0, cols - visibleLen(line))));
-      return;
-    }
 
     const searchHint = searchQuery
       ? chalk.white("[") + chalk.cyan.bold("/") + chalk.white("]") + " " + chalk.cyan.bold(searchQuery)
@@ -631,7 +643,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
     if (selected.size > 1) { showStatus("  rename: select one item at a time", true); return; }
     const e = entries[selIdx]; const full = path.join(cwd, e.name);
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "Rename:", e.name,
+    showPopupInput(stdin, "Rename:", e.name, render,
       (newName) => {
         process.stdout.on("resize", onResize);
         if (!newName || newName === e.name) { fullRedraw(); stdin.on("data", onKey); return; }
@@ -646,7 +658,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
 
   function doMkdir(): void {
     process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
-    showInlineInput(stdin, "New folder:", "",
+    showPopupInput(stdin, "New folder:", "", render,
       (name) => {
         process.stdout.on("resize", onResize);
         if (!name) { fullRedraw(); stdin.on("data", onKey); return; }
@@ -690,39 +702,26 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   }
 
   function openSearch(): void {
+    process.stdout.removeListener("resize", onResize); stdin.removeListener("data", onKey);
     searchActive = true;
-    drawMiniBar();
-  }
-
-  function handleSearchKey(key: string): void {
-    if (key === "\u001b" || key === "\u0003") {
-      searchActive = false;
-      if (searchQuery) { searchQuery = ""; reloadEntries(); }
-      fullRedraw();
-      return;
-    }
-    if (key === "\r") {
-      searchActive = false;
-      fullRedraw();
-      return;
-    }
-    if (key === "\x7f" || key === "\u0008") {
-      if (searchQuery.length > 0) {
-        searchQuery = searchQuery.slice(0, -1);
+    showPopupInput(stdin, "Search:", searchQuery, render,
+      (val) => {
+        searchActive = false;
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      },
+      () => {
+        searchActive = false; searchQuery = "";
+        process.stdout.on("resize", onResize); stdin.on("data", onKey);
+        fullRedraw();
+      },
+      (val) => {
+        searchQuery = val;
         entries = searchQuery ? runSearch(searchQuery) : visibleEntries();
         selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
-        drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
+        render();
       }
-      return;
-    }
-    if (navigate(key)) { drawContent(); renderPreview(); drawBottom(); return; }
-    if (key.length === 1 && key >= " ") {
-      searchQuery += key;
-      entries = runSearch(searchQuery);
-      selIdx = 0; scrollTop = 0; adjustScroll(); refreshPreview();
-      drawNavbar(NAV()); drawContent(); renderPreview(); drawBottom();
-      return;
-    }
+    );
   }
 
   function showDeleteConfirm(): void {
@@ -1153,7 +1152,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
   function onResize(): void { adjustScroll(); fullRedraw(); }
 
   function onKey(k: string): void {
-    if (searchActive) { handleSearchKey(k); return; }
+    if (searchActive) return;
 
     if (browseMode) {
       if (k === "\u0003") { exitBrowse(); process.chdir(cwd); exit(); return; }
@@ -1173,6 +1172,7 @@ export function interactiveDir(onExit: (result: LsResult) => void): void {
       if (k === "\u001b[6~") { browseNavigate(5); return; }
       if (k === "\t") { browseParent(); return; }
       if (k === "\r") { browseEnter(); return; }
+      if (k === " ") { browseSelectDir(); return; }
       if (k === "o" && pvState.content?.kind === "text") { enterPreviewMode(); return; }
       return;
     }
