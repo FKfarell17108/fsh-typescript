@@ -7,7 +7,7 @@ import { w, at, clr, C, R, drawNavbar, NavItem, drawBottomBar, enterAlt, exitAlt
 const BUILTINS = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
   "alias", "unalias", "clear", "history", "trash", "fsh", "fshrc", "neofetch",
-  "bookmarks", "search", "helps",
+  "bookmarks", "search", "helps", "source",
 ];
 
 export function getCandidates(line: string): { candidates: string[]; partial: string } {
@@ -31,6 +31,9 @@ export function getCandidates(line: string): { candidates: string[]; partial: st
 
       case "fsh":
         return { candidates: [], partial };
+
+      case "source":
+        return { candidates: ["~/.fshrc"].filter(s => s.startsWith(partial)), partial };
     }
 
     const { candidates } = getFileCandidates(partial);

@@ -19,7 +19,7 @@ import { spawn } from "child_process";
 const builtins = [
   "exit", "echo", "type", "pwd", "cd", "ls", "dir",
   "alias", "unalias", "clear", "cls", "history", "fshrc", "trash", "neofetch",
-  "bookmarks", "search", "helps",
+  "bookmarks", "search", "helps", "source",
 ];
 
 export function handleBuiltin(
@@ -68,6 +68,28 @@ export function handleBuiltin(
         (value) => resumeInputWithLine(value),
         () => resumeInput()
       );
+      return true;
+
+    case "source":
+      if (args.length === 0) {
+        console.log("source: usage: source filename");
+        done();
+      } else {
+        const home = process.env.HOME || process.env.USERPROFILE || "~";
+        let target = args[0];
+        if (target.startsWith("~/")) {
+          target = path.join(home, target.slice(2));
+        } else {
+          target = path.resolve(target);
+        }
+        const fshrcPath = path.join(home, ".fshrc");
+        if (target === fshrcPath || args[0] === ".fshrc") {
+          handleFshrc(["reload"], done);
+        } else {
+          console.log(`fsh: source: currently only sourcing ~/.fshrc is supported`);
+          done();
+        }
+      }
       return true;
 
     case "fshrc":
@@ -365,24 +387,22 @@ function handleNeofetch(args: string[]) {
   }
 }
 
-function handleFsh(done: () => void) {
+export function printFshBanner() {
   const pkgPath = path.join(__dirname, "..", "package.json");
-  let version = "2.1.3";
+  let version = "2.2.1";
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
     version = pkg.version;
   } catch (e) { }
 
   console.log(chalk.bold("\n FSH (FK Shell)"));
-  console.log(chalk.gray(" The core terminal of FK Universe\n"));
+  console.log();
+  console.log(` ${chalk.cyan("Developer")}  ${chalk.white("Farell Kurniawan")}`);
+  console.log(` ${chalk.cyan("Version")}    ${chalk.white("v" + version)}\n`);
+}
 
-  console.log(` ${chalk.cyan("Description")}  ${chalk.white("A custom full-stack terminal for productivity and innovation")}`);
-  console.log(` ${chalk.cyan("Purpose")}      ${chalk.white("Creating technology-based solutions for society")}`);
-  console.log(` ${chalk.cyan("Framework")}    ${chalk.white("Built with TypeScript, Node.js, and Unix principles")}`);
-  console.log(` ${chalk.cyan("Developer")}    ${chalk.white("Farell Kurniawan")}`);
-  console.log(` ${chalk.cyan("Version")}      ${chalk.white("v" + version)}\n`);
-
+function handleFsh(done: () => void) {
+  printFshBanner();
   console.log(chalk.gray(" Type 'helps' to see available commands or 'fshrc' for config.\n"));
-
   done();
 }

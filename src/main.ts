@@ -1,4 +1,5 @@
 import readline from "readline";
+import { execSync } from "child_process";
 import path from "path";
 import chalk from "chalk";
 import { parseInput } from "./parser";
@@ -14,6 +15,7 @@ import {
 import { highlight } from "./highlight";
 import { loadFshrc } from "./fshrc";
 import { printNeofetch, isNeofetchEnabled } from "./neofetch";
+import { printFshBanner } from "./builtins";
 import { showSearch } from "./search";
 import { showGeneralHistory, loadGeneralHistory, logEvent } from "./generalHistory";
 import { openFileOpsLogFromMain } from "./fileOpsLog";
@@ -380,15 +382,34 @@ function promptWithLine(prefill: string) {
   if (prefill) setTimeout(() => setLine(prefill), 10);
 }
 
+function isStartedFromOtherShell(): boolean {
+  try {
+    const parent = execSync(`ps -p ${process.ppid} -o comm=`, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    const shells = ["bash", "zsh", "fish", "sh", "dash", "ksh"];
+    if (shells.includes(parent)) return true;
+  } catch { }
+  
+  const shell = process.env.SHELL || "";
+  if (shell.includes("bash") || shell.includes("zsh") || shell.includes("fish")) {
+    if (process.env.SHLVL && parseInt(process.env.SHLVL, 10) >= 1) return true;
+  }
+  return false;
+}
+
 if (require.main === module) {
+  const fromOtherShell = isStartedFromOtherShell();
+
   loadFshrc();
   loadLog();
   loadGeneralHistory();
   loadBookmarks();
 
-  if (isNeofetchEnabled()) {
+  if (fromOtherShell) {
+    printFshBanner();
+  } else if (isNeofetchEnabled()) {
     printNeofetch();
   }
 
+  process.env.FSH_IN_SHELL = "true";
   startPrompt();
 }

@@ -1,4 +1,4 @@
-# FSH (FK Shell) v2.2.0
+# FSH (FK Shell) v2.2.1
 
 > A custom Unix shell, developed using TypeScript, and designed specifically for FK Universe to deliver a unique terminal experience.
 
@@ -13,6 +13,14 @@
 ---
 
 ## Changelog
+
+### v2.2.1 - Patch
+
+#### Source Completion & Smart Startup
+- **`source` Command Completion** - Pressing `Tab` after typing `source` now specifically suggests `~/.fshrc` for faster configuration reloading.
+- **Environment-Aware Startup** - `fsh` now intelligently distinguishes between a fresh terminal launch and being called from another shell (like `bash`/`zsh`).
+- **Startup Visuals** - Primary terminal launches show `neofetch`, while entering `fsh` from an external shell displays a clean, professional banner.
+
 
 ### v2.2.0 - Minor
 
