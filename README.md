@@ -6,15 +6,15 @@
 
 ## What is FSH?
 
-**FSH** (FK Shell) is a full-featured Unix shell developed in TypeScript and Node.js. It replaces the default shell (bash/zsh) and provides all standard shell features — pipes, redirection, logical operators, background jobs, and environment variable expansion — while significantly enhancing the user experience through an interactive TUI ecosystem.
+**FSH** (FK Shell) is a full-featured Unix shell developed in TypeScript and Node.js. It replaces the default shell (bash/zsh) and provides all standard shell features - pipes, redirection, logical operators, background jobs, and environment variable expansion - while significantly enhancing the user experience through an interactive TUI ecosystem.
 
-FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard shell behavior, it ships with a visual file browser, a history manager, a trash system, fuzzy search, syntax highlighting, auto-completion, bookmarks, image preview, file operation logging with undo, and more — all built in.
+FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard shell behavior, it ships with a visual file browser, a history manager, a trash system, fuzzy search, syntax highlighting, auto-completion, bookmarks, image preview, file operation logging with undo, and more - all built in.
 
 ---
 
 ## Changelog
 
-### v2.2.1 — Patch
+### v2.2.1 - Patch
 
 **Source Completion & Smart Startup**
 
@@ -24,7 +24,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.2.0 — Minor
+### v2.2.0 - Minor
 
 **Interactive File Preview (Preview Mode)**
 
@@ -35,7 +35,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.10 — Patch
+### v2.1.10 - Patch
 
 **Preview Navbar & Keybindings**
 
@@ -44,43 +44,43 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.9 — Patch
+### v2.1.9 - Patch
 
 **Media Handling & Sticky Headers**
 
-- File and directory metadata headers in the preview panel are now sticky — they stay visible while scrolling content.
+- File and directory metadata headers in the preview panel are now sticky - they stay visible while scrolling content.
 - Selecting a video file now shows a "Video Not Supported" overlay popup instead of opening the editor picker.
 
 ---
 
-### v2.1.8 — Patch
+### v2.1.8 - Patch
 
-**Modal Overlays — Trash Confirmation**
+**Modal Overlays - Trash Confirmation**
 
 - The trash confirmation dialog in `ls` and `dir` is now a centered overlay popup.
 - The background highlights the file or directory being deleted for clear visual context.
 
 ---
 
-### v2.1.7 — Patch
+### v2.1.7 - Patch
 
-**Modal Overlays — Editor Selection**
+**Modal Overlays - Editor Selection**
 
 - The "Choose Editor" prompt is now a centered overlay popup across `ls` and `dir`.
 
 ---
 
-### v2.1.6 — Patch
+### v2.1.6 - Patch
 
 **System & New Builtins**
 
-- `fsh` command added — displays FSH environment info: developer, version, and usage tips.
+- `fsh` command added - displays FSH environment info: developer, version, and usage tips.
 - `cls` command added as an alias for `clear`.
 - Version is now read dynamically from `package.json` across all builtins and terminal outputs.
 
 ---
 
-### v2.1.5 — Patch
+### v2.1.5 - Patch
 
 **Internal Refactoring**
 
@@ -88,7 +88,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.4 — Patch
+### v2.1.4 - Patch
 
 **UI Polishing & Neofetch**
 
@@ -98,7 +98,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.3 — Patch
+### v2.1.3 - Patch
 
 **Trash Integration in Fuzzy Search**
 
@@ -110,7 +110,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.2 — Patch
+### v2.1.2 - Patch
 
 **Image Preview with feh & Extended Syntax Highlighting**
 
@@ -129,7 +129,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.1 — Patch
+### v2.1.1 - Patch
 
 **Fuzzy Search File Preview & Activity Log Category Editor**
 
@@ -146,13 +146,13 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v2.1.0 — Feature Update
+### v2.1.0 - Feature Update
 
 **Preview Panel, Quick Search, Git Status, Sort, Inline Creation, Bookmarks, Undo, Helps**
 
 - Split preview panel (≥110 columns) and overlay preview panel (<110 columns).
 - `P` toggles between split and overlay manually.
-- `O` enters browse mode — navigate inside the preview panel without leaving `ls`.
+- `O` enters browse mode - navigate inside the preview panel without leaving `ls`.
 - `PgUp/PgDn` scrolls preview panel content.
 - `/` in `ls` or `dir` opens inline recursive fuzzy search (depth 4, max 200 results).
 - Bottom bar git badge shows repo name and branch for the folder under the cursor.
@@ -162,18 +162,18 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 - `B` toggles a bookmark on the directory at cursor; `Ctrl+B` opens the bookmark picker.
 - Bookmarks persist to `~/.fsh_bookmarks.json`.
 - `U` in the file ops log undoes the selected operation (copy → delete copy, move/cut → move back, rename → rename back).
-- `helps` command — full keyboard shortcut reference screen.
+- `helps` command - full keyboard shortcut reference screen.
 
 ---
 
-### v2.0.0 — Major Update
+### v2.0.0 - Major Update
 
 **TUI Architecture Overhaul, File Operations System, Persistent Browser, Multi-Select, Activity Log**
 
-- Nano-style navbar across all TUI screens — adaptive 1 or 2 rows, collapses on narrow terminals.
+- Nano-style navbar across all TUI screens - adaptive 1 or 2 rows, collapses on narrow terminals.
 - Persistent bottom status bar on every screen with path, counts, clipboard state, and scroll indicator.
 - Consistent layout: navbar → separator → content → bottom bar.
-- Fully responsive — all screens recalculate layout on terminal resize.
+- Fully responsive - all screens recalculate layout on terminal resize.
 - Copy (`C`), cut (`X`), paste (`V`), rename (`R`), and move-to (`M`) in `ls` and `dir`.
 - Persistent clipboard survives folder navigation.
 - File ops log persisted to `~/.fsh_fileops.json` (max 200 entries).
@@ -185,7 +185,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ---
 
-### v1.0.0 — Initial Release
+### v1.0.0 - Initial Release
 
 - Core shell: pipes, redirection, logical operators, background jobs, env variable expansion.
 - Full PTY support for interactive TUI apps (vim, nano, htop, ssh, git, sudo).
@@ -204,7 +204,7 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 
 ### Core Shell
 
-- Run any OS command — `git`, `npm`, `ping`, `curl`, `python`, etc.
+- Run any OS command - `git`, `npm`, `ping`, `curl`, `python`, etc.
 - Pipes: `cat file.txt | grep "error" | wc -l`
 - Redirection: `echo "log" >> app.log`, `cat < input.txt`, `cmd > out.txt`
 - Logical operators: `&&`, `||`, `;`
@@ -220,13 +220,13 @@ FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard
 | Command | Description |
 |---|---|
 | `ls` | Interactive file browser with grid layout, preview panel, git status, and quick search |
-| `dir` | Interactive directory-only browser — identical feature set to `ls` |
+| `dir` | Interactive directory-only browser - identical feature set to `ls` |
 | `cd` | Change directory with `~` and `~/path` support |
 | `clear` / `cls` | Clear screen and scrollback buffer |
 | `alias` | Create, list, or show aliases; no args lists all |
 | `unalias` | Remove a defined alias by name |
 | `history` | Open general activity log |
-| `trash` | Trash manager — browse, preview, restore, delete permanently |
+| `trash` | Trash manager - browse, preview, restore, delete permanently |
 | `search` | Open fuzzy search (same as `Ctrl+R`) |
 | `bookmarks` | Open bookmark picker (same as `Ctrl+B`) |
 | `fshrc` | Shell config manager (`init`, `reload`, `path`, `version`) |
@@ -252,21 +252,21 @@ Grid layout with color coding, preview panel, and git status. Navigate entirely 
 | `Space` | Toggle selection on item at cursor |
 | `A` | Select all / deselect all |
 | `Enter` (file) | Open with editor picker |
-| `Enter` (dir) | Enter directory — stays in browser |
+| `Enter` (dir) | Enter directory - stays in browser |
 | `Enter` (image) | Open image in feh window |
 | `Tab` | Go to parent directory |
 | `C` | Copy selected item(s) to clipboard |
 | `X` | Cut selected item(s) to clipboard |
 | `V` | Paste clipboard into current directory |
 | `R` | Rename item at cursor (inline input) |
-| `M` | Move mode — navigate to destination, press Y to confirm |
+| `M` | Move mode - navigate to destination, press Y to confirm |
 | `D` | Move to trash (preview confirmation popup) |
 | `N` | Create new folder (inline input) |
 | `T` | Create new file (inline input) |
 | `S` | Open sort picker overlay |
 | `B` | Toggle bookmark on directory at cursor (gold = bookmarked) |
 | `Ctrl+B` | Open bookmark picker |
-| `/` | Quick search — recursive fuzzy search through subdirectories |
+| `/` | Quick search - recursive fuzzy search through subdirectories |
 | `O` (dir/preview) | Enter browse mode inside preview panel |
 | `O` (image) | Open image in feh window |
 | `O` (text file) | Enter preview mode with full cursor navigation |
@@ -280,7 +280,7 @@ Grid layout with color coding, preview panel, and git status. Navigate entirely 
 
 ### Interactive `dir`
 
-Directory-only browser. Identical keyboard layout to `ls` with all features — preview, search, sort, bookmarks, git status — except `T` (new file) is not available.
+Directory-only browser. Identical keyboard layout to `ls` with all features - preview, search, sort, bookmarks, git status - except `T` (new file) is not available.
 
 ---
 
@@ -291,10 +291,10 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 **Split mode** (terminal ≥ 110 columns):
 
 ```
-┌─ file grid ──────────┬─ preview ──────────┐
+┌─ file grid ──────────┬─ preview  ──────────┐
 │  src/                │  README.md          │
 │  dist/               │  ──────────────     │
-│▶ README.md           │  size      3.2 KB   │
+│> README.md           │  size      3.2 KB   │
 │  package.json        │  modified  Mar 23   │
 │                      │  perms     rw-r--r--│
 │                      │  ──────────────     │
@@ -306,17 +306,17 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 
 **Overlay mode** (terminal < 110 columns): 12-line preview panel appears above the bottom bar.
 
-**File preview** — syntax-highlighted content with line numbers, sticky metadata header (size, modified, permissions, type).
+**File preview** - syntax-highlighted content with line numbers, sticky metadata header (size, modified, permissions, type).
 
-**Directory preview** — item count, dirs/files breakdown, total size, sorted listing.
+**Directory preview** - item count, dirs/files breakdown, total size, sorted listing.
 
-**Image preview** — dimensions, size, modified date, and type shown in the panel. Press `O` or `Enter` to open in feh.
+**Image preview** - dimensions, size, modified date, and type shown in the panel. Press `O` or `Enter` to open in feh.
 
-**Video selection** — shows "Video Not Supported" overlay popup instead of crashing or corrupting the file.
+**Video selection** - shows "Video Not Supported" overlay popup instead of crashing or corrupting the file.
 
-**Browse mode** (`O`) — navigate inside the preview panel's directory listing with keyboard. `Space` cds into the shown directory.
+**Browse mode** (`O`) - navigate inside the preview panel's directory listing with keyboard. `Space` cds into the shown directory.
 
-**Preview mode** (`O` on text) — full cursor navigation inside the file content. Arrow keys move the cursor row/column. Cursor wraps at line boundaries with horizontal scrolling.
+**Preview mode** (`O` on text) - full cursor navigation inside the file content. Arrow keys move the cursor row/column. Cursor wraps at line boundaries with horizontal scrolling.
 
 ---
 
@@ -332,13 +332,13 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 | `Enter` (dir) | Navigate into it and clear the search |
 | `Enter` (file) | Open with editor picker |
 
-Results are scoped to the current directory and all subdirectories (depth 4). Heavy directories — `node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__` — are automatically excluded. Relative paths are shown so you always know where a result lives. Maximum 200 results.
+Results are scoped to the current directory and all subdirectories (depth 4). Heavy directories - `node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__` - are automatically excluded. Relative paths are shown so you always know where a result lives. Maximum 200 results.
 
 ---
 
 ### Clipboard & Multi-Select
 
-`Space` to select items, `A` to select all. `C` and `X` package all selected items into one clipboard operation. `V` pastes all items sequentially. The bottom bar indicator shows the item count for multi-item operations (e.g. `Copy: 4 items`). Error count is reported after paste; successful items still land. The clipboard persists across folder navigation — copy in folder A, navigate, paste in folder B.
+`Space` to select items, `A` to select all. `C` and `X` package all selected items into one clipboard operation. `V` pastes all items sequentially. The bottom bar indicator shows the item count for multi-item operations (e.g. `Copy: 4 items`). Error count is reported after paste; successful items still land. The clipboard persists across folder navigation - copy in folder A, navigate, paste in folder B.
 
 ---
 
@@ -356,7 +356,7 @@ Press `S` in `ls`, `dir`, `trash`, or the file ops log to open a sort picker ove
 
 ### Git Status (`ls` and `dir`)
 
-**Bottom bar indicator** — shows git info for the folder currently under the cursor. Branch color indicates type: gold for `main`/`master`, cyan for `dev`/`develop`, green for others.
+**Bottom bar indicator** - shows git info for the folder currently under the cursor. Branch color indicates type: gold for `main`/`master`, cyan for `dev`/`develop`, green for others.
 
 **Per-file badges** in the grid:
 
@@ -477,7 +477,7 @@ Full-screen search across all sources simultaneously.
 | Type | Filter results in real time |
 | `↑ ↓` | Navigate results (skips headers) |
 | `Enter` (command) | Paste command / builtin / alias / executable to prompt |
-| `Enter` (directory) | Open directory action panel — cd into or delete |
+| `Enter` (directory) | Open directory action panel - cd into or delete |
 | `Enter` (file) | Open inline file preview with scrollable content |
 | `↑ ↓ / PgUp/PgDn` | Scroll file preview content |
 | `Enter` (file preview) | Open editor picker |
@@ -628,8 +628,8 @@ All interactive screens share the same structure:
 │                                                                 │
 │  [content area]                           [preview panel]       │
 │                                                                 │
-│  [N] Folder  [T] File  [S] Sort  [B] Bookmark  [/] Search      │  ← minibar
-│  ~/projects/fsh  3d  12f  git: fsh (main)         ↓ 8 more     │  ← bottom bar
+│  [N] Folder  [T] File  [S] Sort  [B] Bookmark  [/] Search       │  ← minibar
+│  ~/projects/fsh  3d  12f  git: fsh (main)         ↓ 8 more      │  ← bottom bar
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -729,7 +729,7 @@ Restart your terminal.
 ```bash
 cd ~/path/to/fsh-universe
 npm run build
-# Restart terminal — changes apply immediately
+# Restart terminal - changes apply immediately
 ```
 
 ---
@@ -741,11 +741,11 @@ npm run build
 | `~/.fsh_history` | Command history | 500 |
 | `~/.fsh_general_history.json` | All activity: commands, file ops, trash | 500 |
 | `~/.fsh_fileops.json` | File operation log: copy, move, rename | 200 |
-| `~/.fsh_trash/` | Trashed files | — |
-| `~/.fsh_trash/.meta.json` | Trash metadata: original paths, timestamps | — |
-| `~/.fsh_bookmarks.json` | Saved bookmark directories | — |
-| `~/.fshrc` | Shell config: aliases, env vars | — |
-| `~/.fsh_neofetch` | Neofetch on/off startup state | — |
+| `~/.fsh_trash/` | Trashed files | - |
+| `~/.fsh_trash/.meta.json` | Trash metadata: original paths, timestamps | - |
+| `~/.fsh_bookmarks.json` | Saved bookmark directories | - |
+| `~/.fshrc` | Shell config: aliases, env vars | - |
+| `~/.fsh_neofetch` | Neofetch on/off startup state | - |
 
 ---
 
