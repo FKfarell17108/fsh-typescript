@@ -1,7 +1,7 @@
 {
   "name": "fsh",
   "version": "2.2.1",
-  "description": "",
+  "description": "FSH (FK Shell) - A custom Unix shell built with TypeScript and Node.js for the FK Universe ecosystem.",
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/main.ts",
@@ -9,8 +9,8 @@
     "start": "node dist/main.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Farell Kurniawan",
+  "license": "Apache-2.0",
   "type": "commonjs",
   "dependencies": {
     "chalk": "^5.6.2",
