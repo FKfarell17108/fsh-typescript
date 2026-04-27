@@ -1,338 +1,245 @@
 # FSH (FK Shell) v2.2.1
 
-> A custom Unix shell, developed using TypeScript, and designed specifically for FK Universe to deliver a unique terminal experience.
+> A custom Unix shell built with TypeScript and Node.js, designed for FK Universe to deliver a unique terminal experience.
 
 ---
 
-## What is fsh?
+## What is FSH?
 
-**FSH** (FK Shell) is a full-featured Unix shell developed using TypeScript and Node.js. FSH replaces the default shell (bash/zsh) and provides all standard shell features, such as executing commands, piping, and redirection.
+**FSH** (FK Shell) is a full-featured Unix shell developed in TypeScript and Node.js. It replaces the default shell (bash/zsh) and provides all standard shell features — pipes, redirection, logical operators, background jobs, and environment variable expansion — while significantly enhancing the user experience through an interactive TUI ecosystem.
 
-**Shell** is a program that interprets what we type in the terminal. It operates using the REPL (Read, Evaluate, Print, Loop) model. FSH is capable of doing all of that, while significantly enhancing the user experience to meet the specific needs of the FK Universe - an interactive terminal, a history manager, a trash system, an auto-completion system, and much more.
+FSH operates on the REPL (Read, Evaluate, Print, Loop) model. On top of standard shell behavior, it ships with a visual file browser, a history manager, a trash system, fuzzy search, syntax highlighting, auto-completion, bookmarks, image preview, file operation logging with undo, and more — all built in.
 
 ---
 
 ## Changelog
 
-### v2.2.1 - Patch
+### v2.2.1 — Patch
 
-#### Source Completion & Smart Startup
-- **`source` Command Completion** - Pressing `Tab` after typing `source` now specifically suggests `~/.fshrc` for faster configuration reloading.
-- **Environment-Aware Startup** - `fsh` now intelligently distinguishes between a fresh terminal launch and being called from another shell (like `bash`/`zsh`).
-- **Startup Visuals** - Primary terminal launches show `neofetch`, while entering `fsh` from an external shell displays a clean, professional banner.
+**Source Completion & Smart Startup**
 
-
-### v2.2.0 - Minor
-
-#### Interactive File Preview
-- **Editor-like Cursor Navigation** - Text files can now be interactively previewed (`O: Browse`) in `ls` and `dir`. Entering preview mode introduces a cursor that can navigate the content with full line wrapping and edge-bound horizontal scrolling.
+- `source` command Tab completion now specifically suggests `~/.fshrc` for faster config reloading.
+- FSH now intelligently detects whether it was launched as a fresh terminal session or invoked from another shell (bash/zsh).
+- Fresh terminal launches display `neofetch`; entering FSH from an external shell displays a clean professional banner instead.
 
 ---
 
-### v2.1.10 - Patch
+### v2.2.0 — Minor
 
-#### Preview Navbar & Keybindings
-- **Simplified Navbar** - When navigating within a file preview, the navbar is simplified (`Nav: Navigate` and `Esc: Back`) for a cleaner interface.
-- **Removed Scrolling Overlaps** - `PgUp/PgDn` bindings have been removed from the preview mode to prevent unintended leaps, prioritizing strict cursor-based navigation.
+**Interactive File Preview (Preview Mode)**
 
----
-
-### v2.1.9 - Patch
-
-#### Media Handling & Sticky Headers
-- **Sticky Preview Headers** - The file and directory metadata headers in the preview panel are now fixed ("sticky") at the top, preventing metadata from disappearing when scrolling.
-- **Video Media Handling** - Selecting a video file now triggers a "Video Not Supported" overlay popup instead of opening the generic editor picker, avoiding file corruption.
+- Text files can now be navigated interactively via `O: Browse` in `ls` and `dir`.
+- Preview mode introduces a full cursor that navigates content row by row and column by column.
+- Horizontal scrolling with edge-bound clamping is supported.
+- Cursor wraps to the next or previous line at line boundaries.
 
 ---
 
-### v2.1.8 - Patch
+### v2.1.10 — Patch
 
-#### Modal Overlays: Trash Confirmation
-- **Centered Trash Overlay** - The confirmation dialog for moving items to the trash in `ls` and `dir` is now presented as a clean, centered overlay popup instead of a bottom prompt.
-- **Trash Preview Context** - When confirming a deletion, the background now clearly highlights the file or directory being deleted to provide better visual context.
+**Preview Navbar & Keybindings**
 
----
-
-### v2.1.7 - Patch
-
-#### Modal Overlays: Editor Selection
-- **Centered Editor Picker** - The "Choose Editor" prompt is now presented as a centered overlay popup across the filesystem browsers (`ls` and `dir`).
+- When in file preview mode, the navbar is simplified to `Nav: Navigate` and `Esc: Back` for a cleaner interface.
+- `PgUp/PgDn` bindings removed from preview mode to prevent unintended jumps; strict cursor navigation applies.
 
 ---
 
-### v2.1.6 - Patch
+### v2.1.9 — Patch
 
-#### System & New Builtins
-- **`fsh` Command** - Added a new builtin command that displays general information about the FSH (FK Shell) environment.
-- **`cls` Command** - Added as an alias command for `clear` to quickly clear the terminal screen.
-- **Dynamic Versioning** - Version parsing is now dynamic, reading directly from `package.json` for builtins and terminal outputs.
+**Media Handling & Sticky Headers**
 
----
-
-### v2.1.5 - Patch
-
-#### Internal Refactoring
-- **`fshrc` Reloading Refactor** - Improved and standardized the internal reloading logic for `.fshrc` and builtin callback handlers to ensure smoother updates.
+- File and directory metadata headers in the preview panel are now sticky — they stay visible while scrolling content.
+- Selecting a video file now shows a "Video Not Supported" overlay popup instead of opening the editor picker.
 
 ---
 
-### v2.1.4 - Patch
+### v2.1.8 — Patch
 
-#### UI Polishing & Neofetch
-- **Neofetch Enhancements** - Modified the builtin `neofetch` UI for better aesthetics.
-- **Navigation Labels** - Simplified navigation labels and `Esc` key logic in browse mode.
-- **Header Visibility** - Improved preview header and metadata visibility in the split pane.
+**Modal Overlays — Trash Confirmation**
 
----
-
-### v2.1.3 - Patch
-
-#### Trash Integration in Fuzzy Search
-- **Dedicated Delete Action** - Files and directories can now be moved to trash directly from the action panels in `search` / `Ctrl+R`
-- **`D` key in Detail View** - Pressing `D` while viewing a file preview or directory listing inside search opens a confirmation dialog to move the item to trash
-- **Auto-Refresh Search** - After a successful delete operation, the search results are automatically refreshed and the deleted item is removed from the list
-- **Refined Directory Navigation**:
-  - **`Esc`** in directory action panel now correctly returns to the main search results instead of closing the search
-  - **`Enter`** is now the primary and consistent key for `cd into` navigation
-  - Navigation labels updated in the navbar for better clarity (`cd into` vs `Back`)
+- The trash confirmation dialog in `ls` and `dir` is now a centered overlay popup.
+- The background highlights the file or directory being deleted for clear visual context.
 
 ---
 
-### v2.1.2 - Patch
+### v2.1.7 — Patch
 
-#### Image Preview with feh
-- **Image detection** - FSH detects image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp`, `.ico`, `.tiff`, `.tif`) in both `ls` and `dir`
-- **`O`** on an image file in browse mode opens it in an external `feh` window with automatic sizing and centering
-- **`Enter`** on an image file in `ls` opens it directly with `feh` instead of the editor picker
-- FSH reads raw image dimensions from binary headers (PNG IHDR, JPEG SOF, GIF logical screen, BMP DIB) and scales the `feh` window to fit the screen, centering it automatically
-- Preview panel shows image metadata: dimensions (`width×height`), file size, modified date, permissions, and file type
-- `feh` window is automatically closed when navigating away from the image or when the browser exits
-- **`Esc`** in browse mode while a `feh` window is open closes the preview without leaving the browser
-- `closeImagePreview()` is called on shell exit and SIGINT to ensure no orphaned `feh` processes remain
+**Modal Overlays — Editor Selection**
 
-#### Extended Syntax Highlighting
-- **Per-category command coloring** - commands are now colored based on their category rather than a single green color:
-
-| Category | Color | Examples |
-|---|---|---|
-| Builtins / Aliases | Bright green / Light green | `ls`, `cd`, `clear` |
-| Editors | Purple | `vim`, `nvim`, `nano`, `code` |
-| Git tools | Orange | `git`, `gh`, `hub` |
-| Node / npm | Teal | `node`, `npm`, `npx`, `yarn`, `bun` |
-| Python | Gold | `python`, `pip`, `poetry` |
-| System | Red-pink | `sudo`, `systemctl`, `apt`, `kill` |
-| Network | Light blue | `curl`, `wget`, `ssh`, `ping` |
-| File ops | Light green | `cp`, `mv`, `rm`, `grep`, `find` |
-| Docker / k8s | Sky blue | `docker`, `kubectl`, `helm` |
-| Build tools | Yellow | `make`, `gcc`, `tsc`, `cargo` |
-| Shell utils | Blue-grey | `bash`, `env`, `which`, `man` |
-
-- **Subcommand coloring** - first argument after `git`, `npm`/`npx`, `docker`, and `sudo`-like commands gets semantic coloring:
-  - `git add / commit / push / tag` → green; `git reset / rm / clean` → red; others → gold
-  - `npm install / ci` → teal; `npm uninstall` → red; `npm run / start` → green
-  - `docker run / build / start` → green; `docker rm / rmi / stop` → red; others → sky blue
-  - Arguments after `sudo` / `su` / `doas` → red
-- **Destructive flag detection** - flags containing `force`, `hard`, `delete`, `remove`, `purge`, `nuke` are colored red; `help`, `version`, `verbose`, `dry-run` are light blue; `output`, `format`, `config`, `file` flags are orange
-- **Number argument coloring** - standalone numeric arguments are colored orange (e.g. `sleep 5`, `kill -9 1234`)
-- **Path argument coloring** - arguments that resolve to real paths are colored by type:
-  - Existing directory → light blue; hidden directory → dim blue
-  - Existing file → white / dim for hidden files
-  - Non-existent path → dim red
-- **Executable cache** - PATH executables are cached for 5 seconds with background refresh to keep highlighting fast without blocking input
-- **Incomplete string detection** - unterminated `"` or `'` strings are colored amber instead of the normal string color
+- The "Choose Editor" prompt is now a centered overlay popup across `ls` and `dir`.
 
 ---
 
-### v2.1.1 - Patch
+### v2.1.6 — Patch
 
-#### Fuzzy Search File Preview
-- **Selecting a file** in `search` / `Ctrl+R` now opens an inline file preview instead of immediately launching an editor
-- Preview shows file metadata (size, modified date, file type) followed by syntax-highlighted content with line numbers
-- **`↑↓` / `PgUp`/`PgDn`** scrolls the file content inside the preview
-- **`Enter`** opens the editor picker when viewing a file — choose from all installed editors
-- **`←→`** navigates between editor choices in the picker row
-- **`Esc`** returns to the search results without opening anything
-- Directory results still open a folder preview showing children before `cd`-ing in
+**System & New Builtins**
 
-#### Activity Log Category Editor
-- **`Enter` on a category header** in the activity log now opens a dedicated category editor screen for Commands, File & Folder Mutations, or Trash Operations
-- Category editor supports **multi-select** (`Space` / `A`) and **bulk delete** (`X`)
-- **`D`** inside a category editor deletes all entries in that category at once (with no confirmation — matches the history manager behavior)
-- **`Enter` on a command entry** in the Commands category pastes it directly to the prompt (same as the history manager)
-- **`Enter` on a non-command entry** opens the detail view for that entry
-- Back navigation returns to the main activity log without losing scroll position
-
-#### Multi-item Clipboard
-- Copy (`C`) and cut (`X`) in `ls` and `dir` now package all **selected items** into a single clipboard operation
-- Clipboard stores an `items[]` array; paste (`V`) iterates over all items and executes each copy/move in sequence
-- The clipboard indicator in the bottom bar shows the item count when multiple items are selected (e.g. `Copy: 4 items`)
-- Error count is reported after paste if any individual item fails; successful items still complete
+- `fsh` command added — displays FSH environment info: developer, version, and usage tips.
+- `cls` command added as an alias for `clear`.
+- Version is now read dynamically from `package.json` across all builtins and terminal outputs.
 
 ---
 
-### v2.1.0 - Feature Update
+### v2.1.5 — Patch
 
-#### Preview Panel (`ls` and `dir`)
-- **Split preview** - when the terminal is wide enough (≥ 110 columns), a preview panel appears on the right side of the file grid, occupying 40% of the width
-- **Overlay preview** - on narrower terminals, a 12-line preview panel appears above the bottom bar
-- **`P`** toggles between split and overlay mode manually
-- **`O`** enters browse mode - navigate inside the preview panel with arrow keys, drill into subdirectories without leaving `ls`
-- **`PgUp` / `PgDn`** scrolls the preview panel content
-- File preview shows syntax-colored content with line numbers, file size, modified date, and permissions
-- Directory preview shows item count, dirs/files breakdown, total size, and a sorted listing
+**Internal Refactoring**
 
-#### Quick Search (`/` in `ls` and `dir`)
-- Press `/` to open inline search mode - the bottom bar transforms into a live search input
-- Search is **recursive** - scans all subdirectories of the current folder up to 4 levels deep
-- Skips heavy directories automatically: `node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__`
-- Results show the **relative path** from the current directory so you always know where a file lives
-- Arrow keys still navigate the filtered grid while search mode is active
-- `Esc` clears the query and returns to normal view; `Enter` confirms and closes the search bar while keeping the filter active
-- Active query shown in bottom bar as `/query`
-- Max 200 results to keep performance snappy
-
-#### Git Status Indicator
-- **Bottom bar git badge** - the bottom bar of `ls` and `dir` now shows the git status of the folder currently under the cursor
-  - `git: repo-name (branch)` in green when the folder is inside a git repo
-  - `no git` in red when the folder has no git history
-- Moves with the cursor in real time as you navigate the grid
-- **Per-file git status badges** - every file and folder in the grid gets a 1-character badge showing its git status:
-
-| Badge | Color | Meaning |
-|---|---|---|
-| `~` | Yellow | Modified (unstaged changes) |
-| `+` | Green | Staged / added |
-| `?` | Orange | Untracked |
-| `-` | Red | Deleted |
-| `→` | Blue | Renamed |
-| `!` | Bright red | Merge conflict |
-
-#### Sort Options
-- Press `S` inside `ls`, `dir`, or `trash` to open a sort picker overlay
-- **`ls` / `dir` sort options:** Name A→Z, Name Z→A, Type, Size large, Size small, Date newest, Date oldest, Hidden last
-- **`trash` sort options:** Date newest/oldest, Name A→Z/Z→A, Size large/small, Type dir/file
-- **File ops log sort options:** Date newest/oldest, Kind A→Z/Z→A, Status done/error
-- Current sort shown in the minibar as `Sort: Type A>Z`
-
-#### Inline File Creation (`n`, `t` in `ls` and `dir`)
-- **`N`** - create a new folder inline: a text input appears at the bottom, type the name and press `Enter`
-- **`T`** - create a new file inline, same flow
-- Both confirm with `Enter`, cancel with `Esc`
-- The cursor jumps to the newly created item after creation
-
-#### Bookmarks / Pinned Directories
-- **`B`** inside `ls` or `dir` - toggle a bookmark on the directory at cursor; bookmarked folders appear in **gold**
-- **`Ctrl+B`** from the prompt or inside `ls`/`dir` - open the bookmark picker to jump to any saved folder
-- **`bookmarks`** command - same as `Ctrl+B`
-- Bookmarks persist across sessions in `~/.fsh_bookmarks.json`
-- Remove a bookmark by pressing `X` in the bookmark picker
-
-#### Undo for File Operations
-- **`U`** inside the file operations log - undo the selected operation
-  - Copy → delete the copy
-  - Move / Cut → move back to original location
-  - Rename → rename back to original name
-- Undo availability is shown with a `↩` indicator and `↩ undo available` message in the detail view
-- If undo is no longer possible (files moved or deleted), a clear error is shown
-
-#### Helps Screen
-- **`helps`** command - opens a full reference screen with every keyboard shortcut in FSH organized by category
-- Navigate with `↑↓` or `j`/`k`; `PgUp`/`PgDn` for fast scroll; `g`/`G` for top/bottom
-- Categories: Shell Core, Built-in Commands, Prompt Shortcuts, ls/dir Browser, Trash Manager, Activity Log, File Operations Log, Fuzzy Search, Bookmarks, Git Prompt, Syntax Highlight Colors, Config File, Data Files
+- Improved and standardized the internal reloading logic for `.fshrc` and builtin callback handlers.
 
 ---
 
-### v2.0.0 - Major Update
+### v2.1.4 — Patch
 
-#### TUI Architecture Overhaul
-- **Nano-style navbar** - all interactive screens display a fixed navbar at the top with keyboard shortcuts. Adaptive: 1 row when shortcuts are 7 or fewer, 2 rows when more are needed. Auto-collapses to shorter hint strings when the terminal is narrow
-- **Bottom status bar** - every screen shows a persistent bottom bar with context info (path, counts, clipboard state) on the left and a scroll indicator (`↓ 12 more` / `end`) on the right
-- **Consistent layout across all screens** - `ls`, `dir`, `trash`, `history`, `search`, `completion picker`, `file ops log`, and `activity log` all share the same layout: navbar → separator → content → bottom bar
-- **Fully responsive** - all screens recalculate layout on terminal resize, both while active and after returning from a sub-screen
-- `drawNavbar(hints[], right?)` - adaptive tier system: picks the longest hint string that fits, automatically falls back to shorter versions as the terminal narrows; 2-row mode activates when no single row fits, split at the midpoint
-- `drawFooter(footerRow, total, scrollTop, vis, statLeft?)` - two-zone footer: left = statistics (e.g. `3 dirs  12 files`), right = `↓ N more` or `(end)`
-- `getNR()` - dynamic navbar height so all position calculations use it instead of a hardcoded constant
-- `exitAlt()` - no longer sends extra `\r\n`, fixing the prompt appearing on the wrong line after leaving any interactive UI
+**UI Polishing & Neofetch**
 
-#### File Operations System (new)
-- **Copy / Cut / Paste** - `c` copy, `x` cut, `v` paste, available in both `ls` and `dir`
-- **Rename** - `r` renames inline with a text input at the bottom
-- **Move To** - `m` moves selected items to any path you specify
-- **Persistent clipboard** - copy in folder A, navigate into any subdirectory, paste in folder B; clipboard stays active across navigation
-- **Clipboard indicator** - bottom bar shows the active clipboard item; `Esc` cancels clipboard without quitting
-- **File ops log** - every copy, cut, move, and rename is tracked with a unique id, source path, destination path, timestamp, and status (`✓` / `✗` / `…`). Persisted to `~/.fsh_fileops.json` (max 200 entries)
-- **Log panel** - `h` inside `ls` / `dir`, or `Ctrl+H` from the prompt, opens the log panel. Press `Enter` on any entry for full detail view
-
-#### Persistent Browser in ls
-- `Enter` on a directory navigates into it without exiting the alt screen
-- `Tab` goes up to the parent directory
-- Clipboard and multi-selection persist across folder navigation
-
-#### Multi-Select (ls, dir, trash)
-- `Space` toggles selection on the item at cursor
-- `a` selects all / deselects all
-- All operations act on the full selection at once
-- Selected items shown with `✓` prefix in magenta
-
-#### General Activity Log (new)
-- Centralized log for all shell activity: commands, copy, move, rename, trash, restore, delete
-- `Ctrl+H` from the prompt opens the general history panel
-- Three categories: **Commands**, **File & Folder Mutations**, **Trash Operations**
-
-#### History Manager
-- Multi-select, grouped by time, delete per entry or all
-- `Enter` immediately pastes the command to the prompt
-
-#### Fuzzy Search (`Ctrl+R`)
-- Searches command history, filesystem, builtins, aliases, and executables simultaneously
-- Results categorized by type
-
-#### Show / Hide Hidden Files
-- Press `.` inside `ls` or `dir` to toggle dotfiles
+- Neofetch UI updated for better aesthetics.
+- Navigation labels and `Esc` key logic simplified in browse mode.
+- Preview header and metadata visibility improved in the split pane.
 
 ---
 
-### v1.0.0 - Initial Release
+### v2.1.3 — Patch
 
-- Core shell: pipes, redirection, logical operators, background jobs, env variable expansion
-- Full PTY support for interactive TUI apps (vim, nano, htop, ssh, git, sudo)
-- Interactive `ls` with grid layout, color coding, and editor picker
-- Tab completion with visual picker UI
-- Git info in prompt (branch, staged, modified, untracked, ahead/behind)
-- Syntax highlighting while typing
-- History manager grouped by time with delete
-- Trash system with preview, restore, and permanent delete
-- `~/.fshrc` config file for aliases and environment variables
-- Neofetch on startup with custom FSH ASCII logo
+**Trash Integration in Fuzzy Search**
+
+- Files and directories can now be moved to trash directly from fuzzy search action panels.
+- `D` key in detail view opens a trash confirmation dialog.
+- After a successful delete, search results auto-refresh and the deleted item disappears.
+- `Esc` in directory action panel now correctly returns to search results instead of closing.
+- `Enter` is the consistent key for `cd into` navigation.
+
+---
+
+### v2.1.2 — Patch
+
+**Image Preview with feh & Extended Syntax Highlighting**
+
+- FSH detects image files and opens them in an auto-sized, auto-centered `feh` window.
+- `O` on an image in browse mode opens it in `feh`. `Enter` on an image in `ls` does the same.
+- Image dimensions are read from raw binary headers (PNG IHDR, JPEG SOF, GIF, BMP DIB).
+- `feh` window closes automatically when navigating away or when the browser exits.
+- `closeImagePreview()` is called on shell exit and SIGINT to prevent orphaned processes.
+- Per-category command coloring for syntax highlighting (editors, git, node, python, system, network, file ops, docker, build tools, shell utils).
+- Subcommand coloring for `git`, `npm/npx`, `docker`, and `sudo`-like commands.
+- Destructive flag detection (`--force`, `--delete`, `--purge` → red).
+- Number argument coloring (orange).
+- Path argument coloring by existence and type (dir, hidden dir, file, hidden file, nonexistent).
+- Executable cache with 5-second TTL and background refresh.
+- Unterminated strings colored amber.
+
+---
+
+### v2.1.1 — Patch
+
+**Fuzzy Search File Preview & Activity Log Category Editor**
+
+- Selecting a file in `search` / `Ctrl+R` now opens an inline file preview with scrollable content.
+- Preview shows file metadata and syntax-highlighted content with line numbers.
+- `Enter` in file preview opens the editor picker; `Esc` returns to results.
+- `Enter` on a category header in the activity log opens a dedicated category editor.
+- Category editor supports multi-select (`Space` / `A`) and bulk delete (`X`).
+- `D` inside a category editor deletes all entries in that category.
+- `Enter` on a command entry in Commands category pastes it to the prompt.
+- Multi-item clipboard: `C` and `X` now package all selected items into one clipboard operation.
+- Clipboard indicator in the bottom bar shows item count for multi-item selections.
+- Error count reported after paste if any item fails; successful items still complete.
+
+---
+
+### v2.1.0 — Feature Update
+
+**Preview Panel, Quick Search, Git Status, Sort, Inline Creation, Bookmarks, Undo, Helps**
+
+- Split preview panel (≥110 columns) and overlay preview panel (<110 columns).
+- `P` toggles between split and overlay manually.
+- `O` enters browse mode — navigate inside the preview panel without leaving `ls`.
+- `PgUp/PgDn` scrolls preview panel content.
+- `/` in `ls` or `dir` opens inline recursive fuzzy search (depth 4, max 200 results).
+- Bottom bar git badge shows repo name and branch for the folder under the cursor.
+- Per-file git status badges: `~` modified, `+` staged, `?` untracked, `-` deleted, `→` renamed, `!` conflict.
+- `S` opens a sort picker overlay in `ls`, `dir`, `trash`, and the file ops log.
+- `N` creates a new folder inline; `T` creates a new file inline. Cursor jumps to the new item.
+- `B` toggles a bookmark on the directory at cursor; `Ctrl+B` opens the bookmark picker.
+- Bookmarks persist to `~/.fsh_bookmarks.json`.
+- `U` in the file ops log undoes the selected operation (copy → delete copy, move/cut → move back, rename → rename back).
+- `helps` command — full keyboard shortcut reference screen.
+
+---
+
+### v2.0.0 — Major Update
+
+**TUI Architecture Overhaul, File Operations System, Persistent Browser, Multi-Select, Activity Log**
+
+- Nano-style navbar across all TUI screens — adaptive 1 or 2 rows, collapses on narrow terminals.
+- Persistent bottom status bar on every screen with path, counts, clipboard state, and scroll indicator.
+- Consistent layout: navbar → separator → content → bottom bar.
+- Fully responsive — all screens recalculate layout on terminal resize.
+- Copy (`C`), cut (`X`), paste (`V`), rename (`R`), and move-to (`M`) in `ls` and `dir`.
+- Persistent clipboard survives folder navigation.
+- File ops log persisted to `~/.fsh_fileops.json` (max 200 entries).
+- `H` inside `ls` / `dir` or `Ctrl+H` from prompt opens the file ops log.
+- `Enter` on a directory in `ls` navigates into it without exiting the alt screen.
+- `Space` toggles selection; `A` selects/deselects all. All operations act on the full selection.
+- General activity log for all shell activity: commands, copy, move, rename, trash, restore, delete.
+- `Ctrl+H` opens the centralized history panel.
+
+---
+
+### v1.0.0 — Initial Release
+
+- Core shell: pipes, redirection, logical operators, background jobs, env variable expansion.
+- Full PTY support for interactive TUI apps (vim, nano, htop, ssh, git, sudo).
+- Interactive `ls` with grid layout, color coding, and editor picker.
+- Tab completion with visual picker UI.
+- Git info in prompt (branch, staged, modified, untracked, ahead/behind).
+- Syntax highlighting while typing.
+- History manager grouped by time with delete.
+- Trash system with preview, restore, and permanent delete.
+- `~/.fshrc` config file for aliases and environment variables.
+- Neofetch on startup with custom FSH ASCII logo.
 
 ---
 
 ## Features
 
 ### Core Shell
-- Run any OS command (`git`, `npm`, `ping`, `curl`, etc.)
+
+- Run any OS command — `git`, `npm`, `ping`, `curl`, `python`, etc.
 - Pipes: `cat file.txt | grep "error" | wc -l`
-- Redirection: `echo "log" >> app.log`, `cat < input.txt`
+- Redirection: `echo "log" >> app.log`, `cat < input.txt`, `cmd > out.txt`
 - Logical operators: `&&`, `||`, `;`
 - Background jobs: `npm run dev &`
-- Environment variable expansion: `$HOME`, `$USER`
+- Environment variable expansion: `$HOME`, `$USER`, `$PATH`
 - Full PTY support for interactive TUI apps (vim, nano, htop, ssh, git, sudo, etc.)
+- `\\` escape and single-quote suppression for variable expansion
+
+---
 
 ### Built-in Commands
 
 | Command | Description |
 |---|---|
-| `ls` | Interactive file browser with grid layout, preview, and search |
-| `dir` | Interactive directory-only browser with preview and search |
-| `cd` | Change directory with `~` support |
-| `clear` | Clear screen and scrollback buffer |
-| `alias` | Create / list / remove aliases |
-| `history` | Visual history manager |
-| `trash` | Move files to trash, restore, or delete permanently |
-| `bookmarks` | Open bookmark picker to jump to a saved directory |
-| `fshrc` | Manage shell config file |
-| `neofetch` | Display system info on startup |
+| `ls` | Interactive file browser with grid layout, preview panel, git status, and quick search |
+| `dir` | Interactive directory-only browser — identical feature set to `ls` |
+| `cd` | Change directory with `~` and `~/path` support |
+| `clear` / `cls` | Clear screen and scrollback buffer |
+| `alias` | Create, list, or show aliases; no args lists all |
+| `unalias` | Remove a defined alias by name |
+| `history` | Open general activity log |
+| `trash` | Trash manager — browse, preview, restore, delete permanently |
+| `search` | Open fuzzy search (same as `Ctrl+R`) |
+| `bookmarks` | Open bookmark picker (same as `Ctrl+B`) |
+| `fshrc` | Shell config manager (`init`, `reload`, `path`, `version`) |
+| `neofetch` | Neofetch manager (`preview`, `on`, `off`) |
+| `fsh` | Show FSH environment info: developer, version, tips |
+| `source ~/.fshrc` | Re-source the fshrc to apply config changes |
 | `helps` | Full keyboard shortcut reference screen |
+| `echo` | Print arguments to stdout |
+| `pwd` | Print current working directory |
+| `type` | Show type of a command (builtin, alias, or path) |
+| `exit` | Exit fsh |
+
+---
 
 ### Interactive `ls`
 
@@ -340,42 +247,52 @@ Grid layout with color coding, preview panel, and git status. Navigate entirely 
 
 | Key | Action |
 |---|---|
-| `↑↓←→` | Navigate grid |
-| `Space` | Select / deselect item |
-| `a` | Select all / deselect all |
-| `Enter` | Open file (editor picker) or enter directory |
+| `↑ ↓ ← →` | Navigate grid |
+| `Home / End` | Jump to first or last item |
+| `Space` | Toggle selection on item at cursor |
+| `A` | Select all / deselect all |
+| `Enter` (file) | Open with editor picker |
+| `Enter` (dir) | Enter directory — stays in browser |
+| `Enter` (image) | Open image in feh window |
 | `Tab` | Go to parent directory |
-| `c` | Copy selected item(s) to clipboard |
-| `x` | Cut selected item(s) to clipboard |
-| `v` | Paste clipboard contents to current directory |
-| `r` | Rename selected item |
-| `m` | Move selected item(s) to a specified path |
-| `d` | Move to trash (with preview confirmation) |
-| `n` | Create new folder (inline input) |
-| `t` | Create new file (inline input) |
-| `s` | Change sort order |
-| `b` | Toggle bookmark on directory at cursor |
+| `C` | Copy selected item(s) to clipboard |
+| `X` | Cut selected item(s) to clipboard |
+| `V` | Paste clipboard into current directory |
+| `R` | Rename item at cursor (inline input) |
+| `M` | Move mode — navigate to destination, press Y to confirm |
+| `D` | Move to trash (preview confirmation popup) |
+| `N` | Create new folder (inline input) |
+| `T` | Create new file (inline input) |
+| `S` | Open sort picker overlay |
+| `B` | Toggle bookmark on directory at cursor (gold = bookmarked) |
 | `Ctrl+B` | Open bookmark picker |
-| `/` | Quick search (recursive, fuzzy) |
-| `o` | Enter browse mode in preview panel / open image with feh |
-| `p` | Toggle split / overlay preview |
-| `PgUp / PgDn` | Scroll preview panel |
-| `.` | Toggle hidden files on / off |
-| `h` | Open file operations log |
+| `/` | Quick search — recursive fuzzy search through subdirectories |
+| `O` (dir/preview) | Enter browse mode inside preview panel |
+| `O` (image) | Open image in feh window |
+| `O` (text file) | Enter preview mode with full cursor navigation |
+| `P` | Toggle split / overlay preview |
+| `.` | Toggle hidden files (dotfiles) on / off |
+| `PgUp / PgDn` | Scroll preview panel content |
+| `H` | Open file operations log |
 | `Esc` | Cancel clipboard / clear search / deselect / quit |
+
+---
 
 ### Interactive `dir`
 
-Directory-only browser. Identical keyboard layout to `ls` with all features available including preview, search, sort, bookmarks, and git status.
+Directory-only browser. Identical keyboard layout to `ls` with all features — preview, search, sort, bookmarks, git status — except `T` (new file) is not available.
+
+---
 
 ### Preview Panel
 
 Available in both `ls` and `dir`. Automatically switches between split and overlay based on terminal width.
 
 **Split mode** (terminal ≥ 110 columns):
+
 ```
 ┌─ file grid ──────────┬─ preview ──────────┐
-│  src/                │    4 items          │
+│  src/                │  README.md          │
 │  dist/               │  ──────────────     │
 │▶ README.md           │  size      3.2 KB   │
 │  package.json        │  modified  Mar 23   │
@@ -387,9 +304,21 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 └──────────────────────┴─────────────────────┘
 ```
 
-**Image preview**: selecting an image file shows its dimensions and metadata in the preview panel, and pressing `O` or `Enter` opens it in a `feh` window.
+**Overlay mode** (terminal < 110 columns): 12-line preview panel appears above the bottom bar.
 
-**Browse mode** (`O`): navigate inside the preview panel's directory listing without entering it in the main grid.
+**File preview** — syntax-highlighted content with line numbers, sticky metadata header (size, modified, permissions, type).
+
+**Directory preview** — item count, dirs/files breakdown, total size, sorted listing.
+
+**Image preview** — dimensions, size, modified date, and type shown in the panel. Press `O` or `Enter` to open in feh.
+
+**Video selection** — shows "Video Not Supported" overlay popup instead of crashing or corrupting the file.
+
+**Browse mode** (`O`) — navigate inside the preview panel's directory listing with keyboard. `Space` cds into the shown directory.
+
+**Preview mode** (`O` on text) — full cursor navigation inside the file content. Arrow keys move the cursor row/column. Cursor wraps at line boundaries with horizontal scrolling.
+
+---
 
 ### Quick Search (`/` in `ls` and `dir`)
 
@@ -397,34 +326,25 @@ Available in both `ls` and `dir`. Automatically switches between split and overl
 |---|---|
 | `/` | Open search mode |
 | Type | Filter results recursively in real time |
-| `↑↓←→` | Navigate filtered results |
+| `↑ ↓ ← →` | Navigate filtered results |
 | `Enter` | Confirm selection, keep filter active |
 | `Esc` | Clear filter and return to normal view |
-| `Enter` on a dir | Navigate into it and clear the search |
-| `Enter` on a file | Open with editor picker |
+| `Enter` (dir) | Navigate into it and clear the search |
+| `Enter` (file) | Open with editor picker |
 
-Results are scoped to the current directory and all subdirectories (depth 4). Heavy directories like `node_modules` and `dist` are automatically excluded. Relative paths are shown in the grid so you always know where a result lives.
+Results are scoped to the current directory and all subdirectories (depth 4). Heavy directories — `node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__` — are automatically excluded. Relative paths are shown so you always know where a result lives. Maximum 200 results.
 
-### Git Status (`ls` and `dir`)
+---
 
-**Bottom bar indicator** - shows git info for the folder currently under the cursor:
-- `git: fsh-universe (main)` - green, when inside a git repo
-- `no git` - red, when not a git repository
+### Clipboard & Multi-Select
 
-**Per-file badges** in the grid:
+`Space` to select items, `A` to select all. `C` and `X` package all selected items into one clipboard operation. `V` pastes all items sequentially. The bottom bar indicator shows the item count for multi-item operations (e.g. `Copy: 4 items`). Error count is reported after paste; successful items still land. The clipboard persists across folder navigation — copy in folder A, navigate, paste in folder B.
 
-| Badge | Meaning |
-|---|---|
-| `~` | Modified (unstaged) |
-| `+` | Staged or added |
-| `?` | Untracked |
-| `-` | Deleted |
-| `→` | Renamed |
-| `!` | Merge conflict |
+---
 
-### Sort Options (`s`)
+### Sort Options (`S`)
 
-Press `s` in `ls`, `dir`, `trash`, or the file ops log to open a sort picker overlay. The current sort is shown in the minibar.
+Press `S` in `ls`, `dir`, `trash`, or the file ops log to open a sort picker overlay. The current sort is shown in the minibar.
 
 | Screen | Sort options |
 |---|---|
@@ -432,21 +352,49 @@ Press `s` in `ls`, `dir`, `trash`, or the file ops log to open a sort picker ove
 | `trash` | Date newest/oldest, Name A→Z/Z→A, Size large/small, Type dir/file |
 | File ops log | Date newest/oldest, Kind A→Z/Z→A, Status done/error |
 
-### Bookmarks (`b`, `Ctrl+B`, `bookmarks`)
+---
+
+### Git Status (`ls` and `dir`)
+
+**Bottom bar indicator** — shows git info for the folder currently under the cursor. Branch color indicates type: gold for `main`/`master`, cyan for `dev`/`develop`, green for others.
+
+**Per-file badges** in the grid:
+
+| Badge | Color | Meaning |
+|---|---|---|
+| `~` | Yellow | Modified (unstaged changes) |
+| `+` | Green | Staged or added |
+| `?` | Orange | Untracked |
+| `-` | Red | Deleted |
+| `→` | Blue | Renamed |
+| `!` | Bright red | Merge conflict |
+
+---
+
+### Inline File & Folder Creation
+
+`N` creates a new folder; `T` creates a new file (ls only). An inline text input appears at the bottom of the screen. Press `Enter` to confirm, `Esc` to cancel. The cursor jumps to the newly created item automatically. Creation is blocked if an item with the same name already exists.
+
+---
+
+### Bookmarks (`B`, `Ctrl+B`, `bookmarks`)
 
 | Key | Action |
 |---|---|
-| `b` in `ls` / `dir` | Toggle bookmark on directory at cursor (gold = bookmarked) |
+| `B` in `ls` / `dir` | Toggle bookmark on directory at cursor (gold = bookmarked) |
 | `Ctrl+B` | Open bookmark picker from prompt or inside `ls`/`dir` |
-| `Enter` in picker | `cd` to the bookmarked folder |
+| `bookmarks` command | Same as `Ctrl+B` |
+| `Enter` in picker | cd to the bookmarked folder |
 | `X` in picker | Remove bookmark |
 | `Esc` | Cancel |
 
 Bookmarks persist to `~/.fsh_bookmarks.json`.
 
-### Undo for File Operations (`u` in file ops log)
+---
 
-Open the file ops log with `h`, navigate to any completed operation, and press `U` to undo it.
+### Undo File Operations (`U` in file ops log)
+
+Open the file ops log with `H`, navigate to any completed operation, and press `U` to undo it.
 
 | Operation | Undo action |
 |---|---|
@@ -456,16 +404,121 @@ Open the file ops log with `h`, navigate to any completed operation, and press `
 
 A `↩` indicator appears next to entries that can be undone. If undo is no longer possible (files were since moved or deleted), a clear message explains why.
 
-### Helps Screen (`helps`)
+---
 
-Full keyboard shortcut reference covering every feature in FSH. Navigate with `↑↓`, `j`/`k`, `PgUp`/`PgDn`, `g`/`G`. Press `Esc` or `q` to close.
+### Image Preview with feh
+
+Supported formats: `png`, `jpg`, `jpeg`, `gif`, `bmp`, `webp`, `ico`, `tiff`, `tif`.
+
+FSH reads raw image dimensions from binary headers (PNG IHDR, JPEG SOF, GIF logical screen, BMP DIB) and scales the `feh` window to fit the screen, centering it automatically. The `feh` window closes when navigating away or when the browser exits. `Esc` in browse mode while feh is open closes the preview without leaving the browser. `closeImagePreview()` is called on shell exit and SIGINT to ensure no orphaned feh processes remain.
+
+---
+
+### Trash System (`trash`)
+
+| Key | Action |
+|---|---|
+| `↑ ↓` | Navigate |
+| `Space` | Select / deselect item |
+| `A` | Select all |
+| `Enter` | Preview file or directory contents |
+| `O` (in preview) | Browse directory listing of a trashed folder |
+| `R` | Restore to original location |
+| `X` | Delete forever (with confirmation) |
+| `D` | Empty entire trash (with confirmation) |
+| `S` | Change sort order |
+| `Esc` | Deselect / quit |
+
+If the original path is already taken when restoring, FSH renames the restored item as `filename(restored)`.
+
+---
+
+### Activity Log (`history` / `Ctrl+H`)
+
+Centralized log of all shell activity, persisted to `~/.fsh_general_history.json`.
+
+| Category | What is logged |
+|---|---|
+| Commands | Every command executed from the prompt |
+| File & Folder Mutations | Copy, move, rename operations |
+| Trash Operations | Trash, restore, delete, empty trash |
+
+Press `Enter` on a category header to open the **category editor**:
+- Navigate, select, and bulk-delete entries within that category.
+- `Enter` on a command entry pastes it to the prompt and executes it.
+- `Enter` on a non-command entry opens its detail view.
+- `D` deletes all entries in the category.
+- `Esc` returns to the main activity log without losing scroll position.
+
+---
+
+### File Operations Log (`H` inside `ls` or `dir`)
+
+Every copy, cut, move, and rename is logged with:
+
+| Field | Description |
+|---|---|
+| ID | Unique identifier |
+| From | Source path |
+| To | Destination path |
+| Timestamp | Date and time |
+| Status | `✓` done, `✗` error, `…` pending |
+
+Press `Enter` on any entry for full detail. Press `U` to undo. Persisted to `~/.fsh_fileops.json` (max 200 entries).
+
+---
+
+### Fuzzy Search (`search` / `Ctrl+R`)
+
+Full-screen search across all sources simultaneously.
+
+| Key | Action |
+|---|---|
+| Type | Filter results in real time |
+| `↑ ↓` | Navigate results (skips headers) |
+| `Enter` (command) | Paste command / builtin / alias / executable to prompt |
+| `Enter` (directory) | Open directory action panel — cd into or delete |
+| `Enter` (file) | Open inline file preview with scrollable content |
+| `↑ ↓ / PgUp/PgDn` | Scroll file preview content |
+| `Enter` (file preview) | Open editor picker |
+| `← →` | Navigate editor choices |
+| `D` (in detail view) | Move file or directory to trash |
+| `Esc` (detail view) | Back to search results |
+| `Esc` (search) | Cancel and exit |
+
+Sources searched: command history, directories, files, builtins, aliases, executables.
+
+---
+
+### Command History Picker (Tab on empty line)
+
+Visual history picker grouped by time: Last hour, Today, Yesterday, This week, Older.
+
+| Key | Action |
+|---|---|
+| `↑ ↓` | Navigate entries and group headers |
+| `Space` | Select / deselect entry |
+| `A` | Select all / deselect all |
+| `Enter` | Use command immediately |
+| `X` / `Delete` | Delete selected entries or entire group |
+| `D` | Delete all history (with confirmation) |
+| `Esc` | Deselect / close |
+
+History is persisted to `~/.fsh_history` (max 500 unique commands).
+
+---
 
 ### Tab Completion
 
-- Single match → auto-complete inline
-- Multiple matches → interactive picker UI (same grid style as `ls`)
-- Completes commands, filenames, paths, and aliases
-- `Tab` on an empty line → browse command history picker
+- Single match → auto-complete inline.
+- Common prefix → extend input to the longest shared prefix.
+- Multiple matches → interactive picker UI (same grid style as `ls`).
+- Completes commands, file paths, aliases, and fshrc/neofetch subcommands.
+- `Tab` after `source` specifically suggests `~/.fshrc`.
+- `Tab` on an empty line opens the command history picker.
+- `Tab` inside the completion picker switches to the history picker.
+
+---
 
 ### Git Info in Prompt
 
@@ -481,14 +534,17 @@ fsh/fsh-universe (main ●↑2) >
 | `↑N` | N commits ahead of remote |
 | `↓N` | N commits behind remote |
 
+---
+
 ### Syntax Highlight While Typing
 
-Commands are colored by category. The table below shows the full color scheme:
+Commands are colored by category. Path arguments are colored by whether the path exists and what type it is.
 
 | Token | Color | Examples |
 |---|---|---|
 | Builtin / valid command | Bright green | `ls`, `cd`, `clear` |
 | Alias | Light green | any defined alias |
+| Invalid command | Red | anything not found in PATH |
 | Editor | Purple | `vim`, `nvim`, `nano`, `code` |
 | Git tools | Orange | `git`, `gh` |
 | Node / npm | Teal | `node`, `npm`, `npx`, `yarn` |
@@ -499,7 +555,6 @@ Commands are colored by category. The table below shows the full color scheme:
 | Docker / k8s | Sky blue | `docker`, `kubectl` |
 | Build tools | Yellow | `make`, `tsc`, `cargo` |
 | Shell utils | Blue-grey | `bash`, `env`, `man` |
-| Invalid command | Red | anything not found |
 | Subcommand | Semantic | `git add` → green, `git reset` → red |
 | Flags (`-v`, `--help`) | Yellow / Light blue | varies by flag name |
 | Destructive flags | Red | `--force`, `--delete`, `-f` |
@@ -510,88 +565,39 @@ Commands are colored by category. The table below shows the full color scheme:
 | Incomplete strings | Amber | unterminated `"` or `'` |
 | Variables (`$HOME`) | Magenta | `$HOME`, `$USER`, `$PATH` |
 | Numeric arguments | Orange | `5`, `1234`, `3.14` |
-| Path arguments | Blue / White / Red | based on whether path exists |
+| Existing directory arg | Blue | `./src`, `~/projects` |
+| Existing file arg | White | `./README.md` |
+| Non-existent path arg | Dim red | `./missing` |
 
-### History Manager (`history`)
+---
 
-| Key | Action |
-|---|---|
-| `↑↓` | Navigate |
-| `Space` | Select / deselect entry |
-| `a` | Select all / deselect all |
-| `Enter` | Use command immediately |
-| `d` | Delete selected entries or group at cursor |
-| `D` | Delete all history (with confirmation) |
-| `Esc` | Deselect / close |
+### Helps Screen (`helps`)
 
-History is grouped by time: Last hour, Today, Yesterday, This week, Older. Persisted to `~/.fsh_history`.
-
-### Fuzzy Search (`Ctrl+R`)
-
-Full-screen search across all sources simultaneously.
+Full keyboard shortcut reference covering every feature in FSH.
 
 | Key | Action |
 |---|---|
-| Type | Filter results in real time |
-| `↑↓` | Navigate results |
-| `Enter` on command | Use command |
-| Enter on directory | Preview folder contents |
-| Enter (in dir preview) | `cd` into directory |
-| D (in detail view) | Move item to trash (with confirmation) |
-| Esc (in detail view) | Back to search results |
-| Esc (in search) | Cancel and exit search |
-| `Enter` on file | Open inline file preview with scroll |
-| `↑↓` / `PgUp/PgDn` | Scroll file preview content |
-| `Enter` in file preview | Open editor picker |
-| `←→` | Navigate editor choices |
-| `Esc` | Cancel / back to results |
+| `↑ ↓` / `j` / `k` | Scroll one line |
+| `PgUp / PgDn` | Fast scroll |
+| `g` | Jump to top |
+| `G` | Jump to bottom |
+| `Esc` / `q` | Close |
 
-Results are categorized: Command history, Directories, Files, Builtins, Aliases, Executables.
+---
 
-### General Activity Log (`Ctrl+H` from prompt)
+### Startup Behavior
 
-Centralized log of all shell activity. Persisted to `~/.fsh_general_history.json`.
-
-| Category | What is logged |
+| Scenario | What happens |
 |---|---|
-| Commands | Every command executed |
-| File & Folder Mutations | Copy, move, rename operations |
-| Trash Operations | Trash, restore, delete, empty trash |
+| Fresh terminal launch | Displays neofetch with custom FSH ASCII logo (if enabled) |
+| Launched from bash/zsh | Displays a clean professional banner instead |
+| `neofetch on` | Enable neofetch on every fresh terminal startup |
+| `neofetch off` | Disable neofetch on startup |
+| `neofetch preview` | Preview neofetch output without changing the setting |
 
-Press `Enter` on a category header to open the **category editor**:
-- Navigate, select, and bulk-delete entries within that category
-- `Enter` on a command entry pastes it to the prompt
-- `Enter` on a non-command entry opens its detail view
-- `D` deletes all entries in the category
-- `Esc` returns to the main activity log
+Neofetch shows: OS, kernel, shell version, CPU, RAM, disk, uptime, IP, and terminal color palette.
 
-### File Operations Log (`h` inside `ls` or `dir`)
-
-Every copy, cut, move, and rename is logged with:
-
-| Field | Description |
-|---|---|
-| ID | Unique identifier |
-| From | Source path |
-| To | Destination path |
-| Timestamp | Date and time |
-| Status | `✓` done, `✗` error, `…` pending |
-
-Press `Enter` on any entry for full detail. Press `U` to undo. Persisted to `~/.fsh_fileops.json` (max 200 entries).
-
-### Trash System (`trash`)
-
-| Key | Action |
-|---|---|
-| `↑↓` | Navigate |
-| `Space` | Select / deselect item |
-| `a` | Select all |
-| `Enter` | Preview file or directory contents |
-| `r` | Restore to original location |
-| `x` | Delete forever (with confirmation) |
-| `D` | Empty entire trash (with confirmation) |
-| `s` | Change sort order |
-| `Esc` | Deselect / quit |
+---
 
 ### Config File (`~/.fshrc`)
 
@@ -606,9 +612,7 @@ export EDITOR=nano
 export NODE_ENV=development
 ```
 
-### Neofetch on Startup
-
-Custom system info display with FSH ASCII logo showing OS, kernel, shell version, CPU, RAM, disk, uptime, IP, and color palette.
+Run `fshrc reload` to hot-reload config without restarting the shell. All modules (aliases, env vars, bookmarks, file ops log, general history) refresh in place.
 
 ---
 
@@ -624,44 +628,45 @@ All interactive screens share the same structure:
 │                                                                 │
 │  [content area]                           [preview panel]       │
 │                                                                 │
-│  [N] New Folder  [T] New File  [S] Sort  [B] Bookmark  [/] Search │ ← minibar
+│  [N] Folder  [T] File  [S] Sort  [B] Bookmark  [/] Search      │  ← minibar
 │  ~/projects/fsh  3d  12f  git: fsh (main)         ↓ 8 more     │  ← bottom bar
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The bottom bar left side now includes the **git status indicator** for the folder under the cursor. The minibar (one row above the bottom bar) shows quick-access shortcuts for creation, sort, bookmarks, and search.
+The navbar adapts: 1 row when ≤ 7 shortcuts fit, 2 rows otherwise. It collapses to shorter labels on narrow terminals. The bottom bar shows the git status indicator for the folder under the cursor. The minibar shows quick-access shortcuts for creation, sort, bookmarks, and search.
 
 ---
 
-## What Makes fsh Different
+## Comparison with bash/zsh
 
 | Feature | bash/zsh | fsh |
 |---|---|---|
-| Interactive file browser | ❌ | ✅ Grid with colors |
+| Interactive file browser | ❌ | ✅ Grid with colors, preview, search |
 | Tab completion UI | Basic list | ✅ Visual picker |
-| Delete to trash | ❌ | ✅ From ls, dir, and search |
+| Delete to trash | ❌ | ✅ From ls, dir, search, and trash |
 | Git info in prompt | Plugin needed | ✅ Built-in |
 | Git status in file browser | ❌ | ✅ Per-file badges + bottom bar |
-| File preview panel | ❌ | ✅ Split + overlay, with browse mode |
+| File preview panel | ❌ | ✅ Split + overlay, sticky headers |
+| Interactive file preview mode | ❌ | ✅ Full cursor navigation |
 | Image preview with feh | ❌ | ✅ Auto-sized, auto-centered |
 | Quick search in browser | ❌ | ✅ `/` recursive fuzzy search |
 | Syntax highlight while typing | Plugin needed | ✅ Built-in, per-category colors |
 | History manager UI | ❌ | ✅ Grouped by time |
-| Custom neofetch | ❌ | ✅ Built-in |
+| Custom neofetch | ❌ | ✅ Built-in, environment-aware |
 | Nano-style keyboard navigation | ❌ | ✅ All TUI screens |
 | Persistent bottom status bar | ❌ | ✅ Path + git + scroll info |
-| Show / hide hidden files toggle | ❌ | ✅ Press `.` in ls / dir |
-| In-shell copy / cut / paste | ❌ | ✅ With persistent multi-item clipboard |
+| Show / hide hidden files | ❌ | ✅ Press `.` in ls / dir |
+| In-shell copy / cut / paste | ❌ | ✅ Multi-item persistent clipboard |
 | File operations log | ❌ | ✅ Tracked with id + timestamp |
 | Undo file operations | ❌ | ✅ Move back, rename back, delete copy |
 | Sort options in browser | ❌ | ✅ Name, type, size, date, hidden last |
-| Create files/folders inline | ❌ | ✅ `n` and `t` with inline input |
+| Create files/folders inline | ❌ | ✅ `N` and `T` with inline input |
 | Pinned/bookmark directories | ❌ | ✅ Gold color + persistent |
 | Centralized activity log | ❌ | ✅ Commands + file ops + trash |
 | Activity log category editor | ❌ | ✅ Per-category edit, bulk delete |
 | Fuzzy search file preview | ❌ | ✅ Inline scroll + editor picker |
 | Fuzzy search across all sources | ❌ | ✅ `Ctrl+R` |
-| Multi-select for bulk operations | ❌ | ✅ `Space` + `a` |
+| Multi-select for bulk operations | ❌ | ✅ `Space` + `A` |
 | Persistent browser (no exit on Enter) | ❌ | ✅ Navigate without leaving ls |
 | Keyboard shortcut reference | ❌ | ✅ `helps` command |
 
@@ -670,32 +675,23 @@ The bottom bar left side now includes the **git status indicator** for the folde
 ## Setup
 
 ### Prerequisites
+
 - Node.js v16+ (recommended: use [nvm](https://github.com/nvm-sh/nvm))
 - npm
 - Linux / WSL Ubuntu
 
 ### Install
 
-Clone the repository:
-
 ```bash
 git clone https://github.com/FKfarell17108/fsh-universe.git
 cd fsh-universe
-```
-
-Install dependencies:
-
-```bash
 npm install
-```
-
-Build:
-
-```bash
 npm run build
 ```
 
 ### Set as Default Shell
+
+Create the launcher script:
 
 ```bash
 sudo nano /usr/local/bin/fsh
@@ -718,21 +714,11 @@ export NVM_DIR="$HOME/.nvm"
 exec node /home/farell/projects/shell/fsh-universe/dist/main.js "$@"
 ```
 
-Make executable:
+Make it executable, register it, and set as default:
 
 ```bash
 sudo chmod +x /usr/local/bin/fsh
-```
-
-Register as valid shell:
-
-```bash
 echo "/usr/local/bin/fsh" | sudo tee -a /etc/shells
-```
-
-Set as default:
-
-```bash
 chsh -s /usr/local/bin/fsh
 ```
 
@@ -743,7 +729,7 @@ Restart your terminal.
 ```bash
 cd ~/path/to/fsh-universe
 npm run build
-# Restart terminal - changes apply immediately
+# Restart terminal — changes apply immediately
 ```
 
 ---
@@ -755,11 +741,11 @@ npm run build
 | `~/.fsh_history` | Command history | 500 |
 | `~/.fsh_general_history.json` | All activity: commands, file ops, trash | 500 |
 | `~/.fsh_fileops.json` | File operation log: copy, move, rename | 200 |
-| `~/.fsh_trash/` | Trashed files | - |
-| `~/.fsh_trash/.meta.json` | Trash metadata: original paths, timestamps | - |
-| `~/.fsh_bookmarks.json` | Saved bookmark directories | - |
-| `~/.fshrc` | Shell configuration: aliases, env vars | - |
-| `~/.fsh_neofetch` | Neofetch on/off state | - |
+| `~/.fsh_trash/` | Trashed files | — |
+| `~/.fsh_trash/.meta.json` | Trash metadata: original paths, timestamps | — |
+| `~/.fsh_bookmarks.json` | Saved bookmark directories | — |
+| `~/.fshrc` | Shell config: aliases, env vars | — |
+| `~/.fsh_neofetch` | Neofetch on/off startup state | — |
 
 ---
 
