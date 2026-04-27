@@ -749,8 +749,26 @@ npm run build
 
 ---
 
-## © 2026 Farell Kurniawan
+## FK Universe Standard Compliance
 
-This project is proprietary software under the FK Universe License.
-All rights reserved. Unauthorized use, copying, or distribution is strictly prohibited.
-This repository is for viewing purposes only.
+FSH has been developed in alignment with the FK Universe Standard, emphasizing consistency, usability, modular engineering, maintainability, and a unified terminal experience across future FK Universe projects.
+
+This standard reflects the long-term engineering direction of the FK Universe ecosystem.
+
+---
+
+## License
+
+Copyright © 2026 Farell Kurniawan
+
+FSH is released under the Apache License 2.0.  
+See the LICENSE file for full terms.
+
+Unless required by applicable law or agreed to in writing, the software is distributed on an "AS IS" BASIS, without warranties or conditions of any kind.
+
+---
+
+## Trademark Notice
+
+“FSH”, “FK Shell”, and related branding elements may be trademarks of Farell Kurniawan / FK Universe.  
+Unauthorized use of the project identity, branding, or misleading forks may be restricted separately from the open-source code license.
