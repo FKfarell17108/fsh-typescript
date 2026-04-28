@@ -186,7 +186,7 @@ function pathArgColor(full: string, kind: FsKind, hidden: boolean): string {
 }
 
 let execCache = new Set<string>();
-let execCacheTime = 0;
+let execCacheTime = 0; 
 let refreshPending = false;
 const CACHE_TTL = 5_000;
 
@@ -201,10 +201,14 @@ function refreshExecutables(): void {
   execCacheTime = Date.now();
 }
 
-refreshExecutables();
+export function invalidateExecCache(): void {
+  refreshExecutables();
+}
 
 function getExecutables(): Set<string> {
-  if (!refreshPending && Date.now() - execCacheTime > CACHE_TTL) {
+  if (execCacheTime === 0) {
+    refreshExecutables();
+  } else if (!refreshPending && Date.now() - execCacheTime > CACHE_TTL) {
     refreshPending = true;
     setImmediate(refreshExecutables);
   }

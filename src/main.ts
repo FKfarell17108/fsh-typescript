@@ -142,6 +142,21 @@ export function reloadHistoryInRl(updated: HistoryEntry[]) {
   if (rl) (rl as any).history = savedHistory.slice();
 }
 
+function expandEnv(val: string): string {
+  let expanded = val.replace(/\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name1, name2) => {
+    const name = name1 || name2;
+    if (name === "PATH") return "$PATH";
+    return process.env[name] ?? "";
+  });
+
+  if (expanded.includes("~")) {
+    const home = process.env.HOME || "/";
+    expanded = expanded.replace(/~(?=\/|$|:)/g, home);
+  }
+
+  return expanded;
+}
+
 function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
@@ -396,8 +411,42 @@ function isStartedFromOtherShell(): boolean {
   return false;
 }
 
+function syncEnvironment() {
+  if (process.platform === "win32") return;
+
+  try {
+    const shell = process.env.SHELL || "bash";
+    const output = execSync(`${shell} -l -c 'env'`, {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: 2000
+    });
+
+    const lines = output.split("\n");
+    for (const line of lines) {
+      const eq = line.indexOf("=");
+      if (eq !== -1) {
+        const key = line.slice(0, eq);
+        const val = line.slice(eq + 1).trim();
+        
+        if (key === "PATH") {
+          const currentPath = process.env.PATH ?? "";
+          const shellPath = val;
+          const combined = (shellPath + ":" + currentPath).split(":").filter(Boolean);
+          process.env.PATH = Array.from(new Set(combined)).join(":");
+        } else if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch {
+  }
+}
+
 if (require.main === module) {
   const fromOtherShell = isStartedFromOtherShell();
+
+  syncEnvironment();
 
   loadFshrc();
   loadLog();

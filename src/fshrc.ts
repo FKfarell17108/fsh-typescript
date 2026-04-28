@@ -4,12 +4,24 @@ import { setAlias } from "./aliases";
 
 const FSHRC = path.join(process.env.HOME ?? "~", ".fshrc");
 
+function expandEnv(val: string): string {
+  return val.replace(/\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name1, name2) => {
+    const name = name1 || name2;
+    if (name === "PATH") return "$PATH";
+    return process.env[name] ?? "";
+  });
+}
+
 export function loadFshrc() {
   let src: string;
   try {
     src = fs.readFileSync(FSHRC, "utf8");
   } catch {
     return;
+  }
+
+  if (process.env.PATH === undefined) {
+    process.env.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
   }
 
   for (const raw of src.split("\n")) {
@@ -45,7 +57,21 @@ export function loadFshrc() {
         val = val.slice(1, -1);
       }
       if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-        process.env[key] = val;
+        if (key === "PATH") {
+          const currentPath: string = process.env.PATH ?? "";
+          let expanded = expandEnv(val);
+
+          if (!expanded.includes("$PATH")) {
+            expanded = expanded + ":$PATH";
+          }
+
+          const merged = expanded.replace(/\$PATH/g, currentPath);
+          
+          const parts = merged.split(":").filter(Boolean);
+          process.env.PATH = Array.from(new Set(parts)).join(":");
+        } else {
+          process.env[key] = expandEnv(val);
+        }
       }
     }
   }
@@ -54,6 +80,12 @@ export function loadFshrc() {
 export function generateDefaultFshrc(): string {
   return `# ~/.fshrc — fsh configuration file
 # Loaded automatically on startup
+
+# ── PATH (IMPORTANT) ─────────────────────────────────────────────────────────
+export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.opencode/bin:$PATH"
+export PATH="$HOME/.nvm/versions/node/v24.14.0/bin:$PATH"
 
 # ── Aliases ───────────────────────────────────────────────────────────────────
 alias ll='ls -la'
