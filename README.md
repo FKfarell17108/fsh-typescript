@@ -523,7 +523,7 @@ History is persisted to `~/.fsh_history` (max 500 unique commands).
 ### Git Info in Prompt
 
 ```
-fsh/fsh-universe (main ●↑2) >
+fsh/fsh-typescript (main ●↑2) >
 ```
 
 | Indicator | Meaning |
@@ -683,8 +683,8 @@ The navbar adapts: 1 row when ≤ 7 shortcuts fit, 2 rows otherwise. It collapse
 ### Install
 
 ```bash
-git clone https://github.com/FKfarell17108/fsh-universe.git
-cd fsh-universe
+git clone https://github.com/FKfarell17108/fsh-typescript.git
+cd fsh-typescript
 npm install
 npm run build
 ```
@@ -711,7 +711,7 @@ fi
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-exec node /home/farell/projects/shell/fsh-universe/dist/main.js "$@"
+exec node /home/farell/projects/shell/fsh-typescript/dist/main.js "$@"
 ```
 
 Make it executable, register it, and set as default:
@@ -727,7 +727,7 @@ Restart your terminal.
 ### Update After Code Changes
 
 ```bash
-cd ~/path/to/fsh-universe
+cd ~/path/to/fsh-typescript
 npm run build
 # Restart terminal - changes apply immediately
 ```
